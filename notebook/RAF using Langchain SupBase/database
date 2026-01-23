@@ -1,0 +1,6 @@
+-- create table public.documents (
+--     id serial primary key,
+--     doc_id text not null,
+--     chunk_index int,
+--     file_name text
+-- );

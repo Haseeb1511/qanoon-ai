@@ -1,0 +1,113 @@
+-- -- 1️⃣ Enable pgvector extension (needed for vector columns)
+-- create extension if not exists vector;
+
+-- -- 2️⃣ Table: documents
+-- create table if not exists public.documents (
+--     doc_id text primary key,
+--     file_name text not null,
+--     user_id text,                    -- optional, who uploaded the document
+--     upload_time timestamp default now(),
+--     metadata jsonb default '{}'::jsonb
+-- );
+
+-- -- 3️⃣ Table: chunks (document embeddings for RAG)
+-- create table if not exists public.qanoon (
+--     id bigserial primary key,
+--     doc_id text not null references documents(doc_id) on delete cascade,
+--     chunk_index int not null,        -- order of chunk in document
+--     content text not null,
+--     embedding vector(1536),           -- adjust dimension (768, 1536, or 3072)
+--     metadata jsonb default '{}'::jsonb
+-- );
+
+-- -- Index for fast similarity search on chunks
+-- create index if not exists idx_chunks_embedding
+--     on public.qanoon using ivfflat (embedding vector_cosine_ops)
+--     with (lists = 100);
+
+
+-- -- Optional: function to search similar chunks
+-- create or replace function public.match_chunks(
+--     query_embedding vector(1536),
+--     match_count int default 5,
+--     filter jsonb default '{}'::jsonb
+-- )
+-- returns table (
+--     id bigint,
+--     doc_id text,
+--     chunk_index int,
+--     content text,
+--     metadata jsonb,
+--     similarity float
+-- )
+-- language plpgsql
+-- stable
+-- as $$
+-- begin
+--     return query
+--     select
+--         c.id,
+--         c.doc_id,
+--         c.chunk_index,
+--         c.content,
+--         c.metadata,
+--         1 - (c.embedding <=> query_embedding) as similarity
+--     from public.qanoon c
+--     where (filter = '{}'::jsonb) or (c.metadata @> filter)
+--     order by c.embedding <=> query_embedding
+--     limit match_count;
+-- end;
+-- $$;
+
+-- -- 4️⃣ Table: chat_memory (long-term memory of conversations)
+-- create table if not exists public.chat_memory (
+--     id bigserial primary key,
+--     session_id text not null,        -- a unique identifier per user/session
+--     message_index int not null,      -- order of messages in the session
+--     sender text not null,            -- 'user' or 'bot'
+--     content text not null,
+--     embedding vector(1536),           -- optional: semantic memory search
+--     metadata jsonb default '{}'::jsonb,
+--     created_at timestamp default now()
+-- );
+
+-- -- Index for semantic search on chat memory (optional)
+-- create index if not exists idx_chatmemory_embedding
+--     on public.chat_memory using ivfflat (embedding vector_cosine_ops)
+--     with (lists = 100);
+
+-- -- Optional: function to search memory semantically
+-- create or replace function public.match_memory(
+--     query_embedding vector(1536),
+--     session_filter text default null,
+--     match_count int default 5
+-- )
+-- returns table (
+--     id bigint,
+--     session_id text,
+--     message_index int,
+--     sender text,
+--     content text,
+--     metadata jsonb,
+--     similarity float
+-- )
+-- language plpgsql
+-- stable
+-- as $$
+-- begin
+--     return query
+--     select
+--         cm.id,
+--         cm.session_id,
+--         cm.message_index,
+--         cm.sender,
+--         cm.content,
+--         cm.metadata,
+--         1 - (cm.embedding <=> query_embedding) as similarity
+--     from public.chat_memory cm
+--     where session_filter is null or cm.session_id = session_filter
+--     order by cm.embedding <=> query_embedding
+--     limit match_count;
+-- end;
+-- $$;
+

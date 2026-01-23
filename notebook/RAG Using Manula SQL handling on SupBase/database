@@ -1,0 +1,86 @@
+
+-- =========================================
+-- 0. Enable pgvector extension (only once)
+-- =========================================
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- =========================================
+-- 1. Drop table if exists
+-- =========================================
+DROP TABLE IF EXISTS public.legal_docs CASCADE;
+
+
+-- =========================================
+-- 2. Create table for chunks
+-- =========================================
+CREATE TABLE public.legal_docs (
+    id BIGSERIAL PRIMARY KEY,
+    doc_id TEXT NOT NULL,
+    chunk_index INT NOT NULL,      -- ✅ MUST be NOT NULL
+    content TEXT NOT NULL,
+    embedding VECTOR(1536),
+    metadata JSONB NOT NULL
+);
+-- =========================================
+-- 3. Add unique constraint for upsert
+-- =========================================
+ALTER TABLE public.legal_docs
+ADD CONSTRAINT legal_docs_doc_chunk_unique
+UNIQUE (doc_id, chunk_index);
+
+-- =========================================
+-- 4. Create index for similarity search
+-- =========================================
+DROP INDEX IF EXISTS idx_legal_docs_embedding;
+
+CREATE INDEX idx_legal_docs_embedding
+ON public.legal_docs USING ivfflat (embedding vector_l2_ops)
+WITH (lists = 100);
+
+-- =========================================
+-- 5. Drop existing RPC function if exists
+-- =========================================
+DROP FUNCTION IF EXISTS public.match_chunks_with_filter(vector, integer, jsonb);
+
+-- =========================================
+-- 6. Create RPC function for similarity search
+-- =========================================
+CREATE FUNCTION public.match_chunks_with_filter(
+    query_embedding VECTOR(1536),
+    match_count INT,
+    filter JSONB DEFAULT '{}'
+)
+RETURNS SETOF public.legal_docs AS $$
+BEGIN
+    RETURN QUERY
+    SELECT *
+    FROM public.legal_docs
+    WHERE metadata @> filter
+    ORDER BY embedding <#> query_embedding  -- cosine similarity
+    LIMIT match_count;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+
+
+
+
+
+-- Supabase RPC for cosine similarity
+-- Best for OpenAI embeddings (or any embeddings where magnitude isn’t meaningful).
+-- Measures angle between vectors, ignores magnitude.
+-- Standard in NLP tasks (semantic search).
+-- Function to match chunks using cosine similarity
+CREATE OR REPLACE FUNCTION public.match_chunks(
+    query_embedding VECTOR(1536),
+    match_count INT
+)
+RETURNS SETOF public.legal_docs AS $$
+BEGIN
+    RETURN QUERY
+    SELECT *
+    FROM public.legal_docs
+    ORDER BY embedding <#> query_embedding  -- cosine distance operator
+    LIMIT match_count;
+END;
+$$ LANGUAGE plpgsql STABLE;

@@ -1,0 +1,60 @@
+Frontend
+ add this file in package.json in root folder(to run frontend from the root folder)
+{
+  "scripts": {
+    "frontend": "npm --prefix frontend run dev"
+  }
+}
+
+==> npm run frontend
+
+
+
+
+
+# Backend
+uv run uvicorn backend.app:app --reload     # to run fast api
+uv run python -m backend.app     # same as above but(not recomeneded with fastAPI)
+
+
+Make sure to add -m 
+and never run like backend/app
+otherwise it will throw an error  "no mudule name src"
+
+
+
+
+
+
+# Project Changes to backend while making frontend
+## Backend (`backend/app.py`)
+### added `GET /all_threads`
+- Purpose: To allow the frontend sidebar to display a list of all chat histories (persistence).
+- Implementation: Fetches `thread_id`, `doc_id`, and `messages` from the Supabase `threads` table. It returns a simplified list containing the `thread_id`, `doc_id`, and a preview text derived from the first message.
+
+
+
+
+
+
+Fronend technology
+Core Framework & Build Tool
+React (v19): The foundational library for building the component-based user interface.
+Vite: A high-performance build tool that serves the app during development and bundles it for production.
+Styling & Icons
+Tailwind CSS (v4): A utility-first CSS framework used for all the modern, minimal layout and design.
+Lucide React: The icon library used for elements like the "Send" button, "Plus" icon, and file markers.
+Logic & Interactivity
+JavaScript (ES Modules): The programming language driving all the logic (
+.jsx
+ files).
+Framer Motion: Used for the smooth entry/exit animations (like when the PDF upload section toggles).
+Axios: Used for handling API communication between the React frontend and your FastAPI backend.
+Standard Web Technologies
+HTML5 / Semantic HTML: For the basic structure.
+Modern CSS (Flexbox/Grid): Used extensively via Tailwind for the sticky input bar and fixed-width sidebar.
+Good
+Bad
+
+
+
