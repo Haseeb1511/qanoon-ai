@@ -7,7 +7,8 @@ from langchain_core.messages import (
 )
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores.pgvector import PGVector
+# from langchain_community.vectorstores.pgvector import PGVector
+from langchain_postgres import PGVector
 from tqdm import tqdm
 
 from langchain.messages import RemoveMessage # to delete something from state permenantly
@@ -96,9 +97,9 @@ class GraphNodes:
             chunk.metadata.update(metadata)
 
         vectorstore = PGVector(
-            connection_string=CONNECTION_STRING,
+            connection=CONNECTION_STRING,
             collection_name=state["collection_name"],
-            embedding_function=self.embedding_model,
+            embeddings=self.embedding_model,
             use_jsonb=True,
             engine_args={"poolclass": NullPool}  # disable pooling
         )
@@ -173,13 +174,12 @@ class GraphNodes:
     # We can add Metadata filtering Here
     def retriever(self,state: AgentState):     
         vectorstore = PGVector(
-            connection_string=CONNECTION_STRING,
+            connection=CONNECTION_STRING,
             collection_name=state["collection_name"],
-            embedding_function=self.embedding_model,
+            embeddings=self.embedding_model,
             use_jsonb=True,
-            engine_args={"poolclass": NullPool} # disable pooling
+            engine_args={"poolclass": NullPool}  # disable pooling
         )
-
         # Metadata filter for this specific PDF
         retriever = vectorstore.as_retriever(
             search_type="similarity",

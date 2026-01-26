@@ -1,44 +1,39 @@
 langchain
 langgraph
-langchain_groq
 langchain_community
 
 langgraph
 langchain_openai
-langchain_google_genai
 pypdf
 cryptography
 
 
 # For postgres
 langgraph-checkpoint-postgres
-psycopg[binary,pool]
-pgvector
-# For postgres
-# pgvector<0.4       # remove the >=0.4.2
-# langchain-postgres==0.0.16  # latest compatible
-# pip install -r requirements.txt --pre
-
-fastapi
-uvicorn[standard]
-python-multipart   #FastAPI requires python-multipart to handle file uploads (UploadFile, form-data requests, etc.),
-
-langchain-cohere
-rank_bm25
-
-psycopg2
+langchain-postgres
+pgvector<0.4
 
 
-fastapi
 
-dotenv
-ipykernel
 
+# supabase
 supabase
+sqlalchemy
+psycopg2-binary
 
 
-
+# Web framework
 fastapi
+python-multipart   #FastAPI requires python-multipart to handle file uploads (UploadFile, form-data requests, etc.),
 pydantic
 uvicorn
 python-multipart
+
+
+
+# Environment variables
+dotenv
+ipykernel
+
+
+

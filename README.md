@@ -33,3 +33,8 @@ langgraph
 
 ```
 
+
+
+# upload
+docker fast api ---> aws
+frontend  ---> vercel
