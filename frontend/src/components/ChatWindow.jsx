@@ -1,27 +1,28 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, Loader2, Sparkles } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+const API_URL = import.meta.env.VITE_API_URL;
 
 const ChatWindow = ({
     activeThread,
     messages,
-    onSendMessage,
-    onUploadAndAsk,
-    loading,
+    onUpdateMessages, // callback to update messages in parent
     file
 }) => {
     const [input, setInput] = useState("");
+    const [loading, setLoading] = useState(false); // ✅ Move loading state here
     const messagesEndRef = useRef(null);
     const textareaRef = useRef(null);
+    const abortControllerRef = useRef(null);
 
+    /* ------------------ Scroll ------------------ */
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
+    useEffect(() => scrollToBottom(), [messages, loading]);
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages, loading]);
-
+    /* ------------------ Auto-resize textarea ------------------ */
     useEffect(() => {
         if (textareaRef.current) {
             textareaRef.current.style.height = 'auto';
@@ -29,67 +30,146 @@ const ChatWindow = ({
         }
     }, [input]);
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (loading) return;
+    /* ------------------ Send Message ------------------ */
+    const handleSubmit = async (e) => {
+        e?.preventDefault();
+        if (!input.trim() || loading) return;
 
-        if (!activeThread) {
-            if (!file || !input.trim()) return;
-            onUploadAndAsk(file, input);
-        } else {
-            if (!input.trim()) return;
-            onSendMessage(input);
-        }
+        const message = input.trim();
         setInput("");
-        if (textareaRef.current) textareaRef.current.style.height = 'auto';
+        setLoading(true);
+        abortControllerRef.current = new AbortController();
+
+        // Calculate the bot message index BEFORE adding messages
+        const botMessageIndex = messages.length + 1;
+
+        // Add user message and empty bot message together
+        const newMessages = [
+            ...messages,
+            { role: 'human', content: message },
+            { role: 'ai', content: '' }
+        ];
+        onUpdateMessages(newMessages);
+
+        try {
+            const url = activeThread
+                ? `${API_URL}/follow_up`
+                : `${API_URL}/ask`;
+
+            const formData = new FormData();
+            if (!activeThread) {
+                formData.append('pdf', file);
+            } else {
+                formData.append('doc_id', activeThread.doc_id);
+                formData.append('thread_id', activeThread.thread_id);
+            }
+            formData.append('question', message);
+
+            const response = await fetch(url, {
+                method: 'POST',
+                body: formData,
+                signal: abortControllerRef.current.signal,
+            });
+
+            if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+            if (!response.body) throw new Error('No response body');
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let botMessage = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (!trimmedLine.startsWith('data:')) continue;
+
+                    try {
+                        const data = JSON.parse(trimmedLine.replace(/^data:\s*/, ''));
+                        if (data.token) {
+                            botMessage += data.token;
+                            onUpdateMessages(prev => {
+                                const updated = [...prev];
+                                updated[botMessageIndex] = { role: 'ai', content: botMessage };
+                                return updated;
+                            });
+                        }
+                        else if (data.type === 'error') {
+                            onUpdateMessages(prev => {
+                                const updated = [...prev];
+                                updated[botMessageIndex] = { role: 'ai', content: `Error: ${data.message}` };
+                                return updated;
+                            });
+                        }
+                    } catch (err) {
+                        console.error('Failed to parse SSE:', err);
+                    }
+                }
+            }
+
+            if (!botMessage) {
+                onUpdateMessages(prev => {
+                    const updated = [...prev];
+                    updated[botMessageIndex] = { role: 'ai', content: "No response received. Please try again." };
+                    return updated;
+                });
+            }
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                console.error('Chat error:', err);
+                onUpdateMessages(prev => {
+                    const updated = [...prev];
+                    if (updated[botMessageIndex]) {
+                        updated[botMessageIndex] = { role: 'ai', content: 'Something went wrong. Please try again.' };
+                    } else {
+                        updated.push({ role: 'ai', content: 'Something went wrong. Please try again.' });
+                    }
+                    return updated;
+                });
+            }
+        } finally {
+            setLoading(false);
+            abortControllerRef.current = null;
+        }
     };
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            handleSubmit(e);
+            handleSubmit();
         }
     };
-
-    const canSendMessage = activeThread || file;
 
     return (
         <div className="chat-container">
             <div className="chat-main custom-scrollbar">
                 <div className="chat-inner">
-                    {!activeThread && messages.length === 0 ? (
+                    {messages.length === 0 ? (
                         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
                             <h1 className="text-3xl font-bold mb-4">How can I help you?</h1>
                             <p className="text-secondary max-w-md mb-8">
-                                {file ? `"${file.name}" is ready. Ask me anything.` : "Upload a legal document to get started."}
+                                {file ? `"${file.name}" is ready. Ask me anything.` : "Upload a document to get started."}
                             </p>
-                            {!file && (
-                                <div className="flex flex-wrap justify-center gap-2">
-                                    {/* {['Analyze contracts', 'Explain legal jargon', 'Find clauses'].map((s) => (
-                                        <div key={s} className="px-3 py-1.5 rounded-lg border border-[#2a2a2e] text-sm text-[#676767] hover:border-white/20 transition-colors">
-                                            {s}
-                                        </div>
-                                    ))} */}
-                                </div>
-                            )}
                         </div>
                     ) : (
                         <div className="flex flex-col">
                             {messages.map((msg, idx) => (
                                 <motion.div
+                                    key={idx}
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    key={idx}
                                     className={`message-bubble ${msg.role === 'human' ? 'user' : 'ai'}`}
                                 >
-                                    {msg.content}
+                                    {msg.content || (msg.role === 'ai' ? <span className="italic text-gray-400">Thinking...</span> : null)}
                                 </motion.div>
                             ))}
-                            {loading && (
-                                <div className="message-bubble ai italic text-[#676767]">
-                                    Thinking...
-                                </div>
-                            )}
                         </div>
                     )}
                     <div ref={messagesEndRef} />
@@ -103,21 +183,21 @@ const ChatWindow = ({
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="Message QanoonAI..."
+                        placeholder="Type your question..."
                         rows={1}
-                        disabled={loading || !canSendMessage}
+                        disabled={loading || (!activeThread && !file)}
                         className="chat-textarea"
                     />
                     <button
                         onClick={handleSubmit}
-                        disabled={loading || !input.trim() || !canSendMessage}
+                        disabled={loading || !input.trim() || (!activeThread && !file)}
                         className="send-btn"
                     >
-                        {loading ? <Loader2 className="w-4 h-4 animate-spin text-black" /> : <Send className="w-4 h-4 text-black" />}
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     </button>
                 </div>
                 <p className="text-center text-[10px] text-[#676767] mt-3">
-                    QanoonAI Developed by Haseeb Manzoor.
+                    QanoonAI by Haseeb Manzoor
                 </p>
             </div>
         </div>

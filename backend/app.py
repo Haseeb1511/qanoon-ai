@@ -1,29 +1,24 @@
-import os,sys
-
-
-from fastapi import FastAPI,HTTPException,UploadFile,Form,File
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import shutil
-from typing import Optional
-from langchain_core.messages import HumanMessage,AIMessage
-from src.graph.builder import GraphBuilder
+import os, sys, uuid, json, asyncio
 from pathlib import Path
-from langgraph.checkpoint.postgres import PostgresSaver
-from src.db_connection.connection import CONNECTION_STRING
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, UploadFile, Form, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+
+import aiofiles
+from langchain_core.messages import HumanMessage, AIMessage
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+from src.graph.builder import GraphBuilder
+from src.db_connection.connection import CONNECTION_STRING, supabase_client
 from src.utils.file_hash import get_file_hash
-import uvicorn
-from src.db_connection.connection import CONNECTION_STRING,supabase_client
-import uuid
 
 
-UPLOAD_DIR = Path("uploaded_docs")
-UPLOAD_DIR.mkdir(exist_ok=True)
+# -------------------- APP SETUP --------------------
 
 app = FastAPI(title="QanoonAI")
 
-# Add CORS middleware to allow requests from any origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,197 +27,250 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+UPLOAD_DIR = Path("uploaded_docs")
+UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 
-graph_builder = GraphBuilder(checkpointer=None)
+graph = None  # global graph variable default is None
+checkpointer = None  # global checkpointer variable default is None
+
+
+# explian what it do and how it do and hwy it is required
+# -------------------- LIFESPAN --------------------
+# we will use asyn context manager as it help in writing async context manager whiich is useful for fastapi as we will use  async funciton in fastapi
+# This is useful for resources that take time to initialize or clean up,like a database
+# connection or, in your case, a LangGraph workflow and Postgres checkpointer
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global graph, checkpointer
+
+    async with AsyncPostgresSaver.from_conn_string(CONNECTION_STRING) as cp:
+        await cp.setup()
+        checkpointer = cp
+        graph = GraphBuilder(checkpointer=checkpointer).build_graph()
+        print("Graph + Checkpointer ready")
+        yield
+
+
+# it tell fast api to use the lifespan context to handle app startup and shutdown
+# Before the first request(quesion) it will initlize hte checkpointer and graph 
+# after the app stpops it can clean up resources if needed
+# with out this our enpoint would fail because graph and chekcpointer would be None.
+app.router.lifespan_context = lifespan
+
+
+# -------------------- HELPERS --------------------
+
+# Initail state for the graph
+async def prepare_initial_state(pdf, question: str):
+    pdf_path = UPLOAD_DIR / pdf.filename
+
+    async with aiofiles.open(pdf_path, "wb") as f:
+        while chunk := await pdf.read(1024 * 1024):
+            await f.write(chunk)
+
+    doc_id = get_file_hash(str(pdf_path))  # generate unique doc id based on file content using get_file_hash funciton
+    collection_name = pdf_path.stem.lower().replace(" ", "_")  # "law.pdf".stem -> "law"
+    thread_id = str(uuid.uuid4())  # genearate thread id for the conversation
+
+    state = {
+        "documents_path": str(pdf_path),
+        "doc_id": doc_id,
+        "collection_name": collection_name,
+        "messages": [HumanMessage(content=question)],
+        "summary": ""
+    }
+
+    return state, thread_id, doc_id
 
 
 
+
+# ===================== Streaming Graph =====================
+def stream_graph(graph, state, config, on_complete=None):
+
+    async def event_generator():
+        tokens = []
+
+        try:
+            async for event in graph.astream_events(state, config=config, version="v2"):
+                if event["event"] == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk and getattr(chunk, "content", None):
+                        tokens.append(chunk.content) # we also append token in list as to persist the wole content is databse as otherwise we are genrating token by token so it will save incorrectly in database
+                        yield f"data: {json.dumps({'token': chunk.content})}\n\n"
+                        await asyncio.sleep(0)
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
+            return
+
+        final_answer = "".join(tokens)  # join all the tokens in single string
+
+        # do this after the entier streaming is finshed(here when all token are streamed and final_answer is joined then we store the the content in the database)
+        if on_complete:
+            await on_complete(final_answer)
+        
+        # In SSE every msg is sent as data: <message>\n\n
+        # The double newline \n\n is required by SSE protocol to signal end of the event.
+        # our froned can detect this [DONE] message to know that the streaming is complete
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache", # ensures the browser does not cache the streamed response. Each stream should be fresh.
+            "X-Accel-Buffering": "no",  # used mainly with Nginx or reverse proxies to disable buffering. Without this, tokens may be delivered in large chunks instead of real-time.
+            "Connection": "keep-alive" # keeps the HTTP connection open so multiple messages (tokens) can flow continuously.
+        }
+    )
+
+
+
+# event = {
+#   "event": "on_chat_model_stream",
+#   "name": "ChatOpenAI",
+#   "data": {
+#       "chunk": AIMessageChunk(content="Hel")
+#   },
+#   "tags": ["llm"],
+#   "metadata": {...}
+# }
+
+# langgraph has many kind of event
+# Event name	   ===> Meaning
+# on_chain_start	===> A chain/node started
+# on_chain_end	===> A chain/node finished
+# on_chat_model_start ===>	LLM started
+# on_chat_model_stream ===>	LLM produced a token
+# on_chat_model_end  ===>	LLM finished
+# on_tool_start	 ===> Tool execution started
+# on_tool_end ===>	Tool execution finished
+
+
+
+
+
+# ============================= Load Thread Messages =============================
+async def load_thread_messages(thread_id: str):
+    response = (
+        supabase_client
+        .table("threads")
+        .select("messages, doc_id")
+        .eq("thread_id", thread_id)
+        .single()
+        .execute()
+    )
+
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    return response.data["messages"], response.data["doc_id"]
+
+
+# -------------------- ENDPOINTS --------------------
+
+
+#==================== Initial Question Endpoint =====================
 @app.post("/ask")
-async def ask_question(pdf:UploadFile=File(...),question:str=Form(...)):
-    """
-    Upload a PDF and ask a quesiton.
-    Return the anser from the chatbot
-    """
-    if not pdf.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400,detail="Only PDF file are supported for now")
-    
-    # save pdf file 
-    pdf_path = UPLOAD_DIR/pdf.filename
-    with open(pdf_path,"wb") as f:
-        shutil.copyfileobj(pdf.file,f)
-    
+async def ask_question(
+    pdf: UploadFile = File(...),
+    question: str = Form(...)
+):
+    state, thread_id, doc_id = await prepare_initial_state(pdf, question)
 
-    # generate doc_id, and collection name
-
-    doc_id = get_file_hash(str(pdf_path))
-    collection_name = pdf_path.stem.lower().replace(" ","_")  #legal case.pdf --> legal_case
-    thread_id = str(uuid.uuid4())
-  
-
-    with PostgresSaver.from_conn_string(CONNECTION_STRING) as checkpointer:
-        checkpointer.setup()
-
-        graph = graph_builder.__class__(checkpointer=checkpointer)()
-
-        config = {"configurable":{"thread_id":thread_id}}
-
-        result = graph.invoke({
-                "documents_path": str(pdf_path),
-                "doc_id": doc_id,
-                "collection_name": collection_name,
-                "messages": [HumanMessage(content=question)],
-                "summary": ""
-        },config=config) # type:ignore
-
-        # save messages in supbase
-        messages = [
-            {"role":"human","content":question},
-            {"role":"ai","content":result["answer"]}
-        ]
+    # as above when streamin is done and message is append as single sting we need to store the question and answer in database
+    # so we define on_complete function to do that
+    async def on_complete(answer: str):
         supabase_client.table("threads").upsert({
-            "thread_id":thread_id,
-            "doc_id":doc_id,
-            "messages":messages
+            "thread_id": thread_id,
+            "doc_id": doc_id,
+            "messages": [
+                {"role": "human", "content": question},
+                {"role": "ai", "content": answer}
+            ]
         }).execute()
 
-        return {"answer": result["answer"], "doc_id": doc_id, "thread_id": thread_id}
-    
+    config = {"configurable": {"thread_id": thread_id}}
+
+    return stream_graph(graph, state, config, on_complete)
 
 
 
-# thread id --> It will be chat thread id which will be selected by uesr from frontend side
-# doc_id --> it is generated by  get_file_hash()
-# Same file → same doc_id → reuse embeddings/vectorstore
-# Different file → new doc_id → new vectorstore
+# ===================== Follow-up Question Endpoint =====================
 
-# for follow up wQuestion
 @app.post("/follow_up")
-async def follow_up(doc_id:str=Form(...),
-                    question:str=Form(...),
-                    thread_id:str=Form("user-123")
-                    ):
-    """
-    Ask a follow up quesiton using the existing vectorstore
-    """
-    if not doc_id:
-        raise HTTPException(status_code=400,detail="doc_id is required")
+async def follow_up(
+    thread_id: str = Form(...),
+    question: str = Form(...)
+):
+    # first we will load previous message for the seelcted thread id that user had previously used
+    previous_messages, doc_id = await load_thread_messages(thread_id)
 
-    #Get Previous question
-    response = supabase_client.table("threads").select("messages").eq("thread_id",thread_id).execute()
-    previous_messages = []
-    if response.data:
-        previous_messages = response.data[0]["messages"] 
+    # then we will fetch document info to get collection name
+    # as our langgraph vectorstore is used collection name to fetch relevant chunks from vectorstore
+    # this enusre that retriver fetches from correct document
+    response = (
+        supabase_client
+        .table("documents")
+        .select("file_name")
+        .eq("doc_id", doc_id)
+        .limit(1)
+        .execute()
+    )
 
-    # append new humman message
-    previous_messages.append({"role":"human","content":question})
-
-    # Lookup collection_name
-    response_doc = supabase_client.table("documents").select("file_name").eq("doc_id", doc_id).limit(1).execute()
-    if not response_doc.data:
+    if not response.data:
         raise HTTPException(status_code=404, detail="Document not found")
-    file_name = response_doc.data[0]["file_name"]
-    collection_name = file_name.rsplit(".", 1)[0].lower().replace(" ", "_")
 
-   # call graph
-    with PostgresSaver.from_conn_string(CONNECTION_STRING) as checkpointer:
-        checkpointer.setup()
-        graph = graph_builder.__class__(checkpointer=checkpointer)()
-        config = {"configurable": {"thread_id": thread_id}}
+    # rsplit (sep, maxsplit) 
+    # maxsplit -->maximum number of splits starting from the right.
+    # Here we split the file name at the last period to separate the name from the extension
+    collection_name = response.data[0]["file_name"].rsplit(".", 1)[0].lower().replace(" ", "_")
 
-        # Pass follow-up message
-        result = graph.invoke({
-            "doc_id": doc_id,
-            "collection_name": collection_name,
-            "messages": [HumanMessage(content=m["content"]) for m in previous_messages]
-        }, config=config)
-
-        # previous message contain all previos message and current messages
-    # Append AI response
-    previous_messages.append({"role": "ai", "content": result["answer"]})
-
-    # Update Supabase
-    supabase_client.table("threads").update({"messages": previous_messages}).eq("thread_id", thread_id).execute()
-    return {"result":result["answer"]}
-
-
-
-
-
-
-@app.get("/get_threads/{thread_id}")
-async def get_threads(thread_id: str):
-    """
-    Get a specific thread's data including messages and doc_id
-    """
-    try:
-        response = supabase_client.table("threads").select("*").eq("thread_id", thread_id).single().execute()
-        
-        if response.data:
-            return {
-                "thread_id": response.data["thread_id"],
-                "doc_id": response.data["doc_id"],
-                "messages": response.data["messages"]
-            }
+    messages = []
+    # we will append previous message + new message in the messages list  to provide the contet to the model
+    # as our query_rewiter node use previous context to rewrite the query so we have to pass aprevious msg along with new quesiton to get contextuall aware query
+    for m in previous_messages:
+        if m["role"] == "human":
+            messages.append(HumanMessage(content=m["content"]))
         else:
-            raise HTTPException(status_code=404, detail="Thread not found")
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Thread not found: {str(e)}")
+            messages.append(AIMessage(content=m["content"]))
 
+    # we will append the new quesion in th messages list
+    messages.append(HumanMessage(content=question))
 
+    # now we will pass the state to the graph
+    state = {
+        "doc_id": doc_id,  # which doc_id we are using
+        "collection_name": collection_name,  # which vectorstore collection to use
+        "messages": messages # list of all previous messages + new question(to provide context to the model)
+    }
 
-@app.get("/all_threads")
-async def get_all_threads():
-    """
-    Get all threads with their IDs and the first message (preview).
-    """
-    try:
-        response = supabase_client.table("threads").select("thread_id, doc_id, messages").execute()
-        threads = []
-        if response.data:
-            for thread in response.data:
-                # Extract file name from doc_id if possible, or just use doc_id
-                # For now, we'll try to get the first message as a title/preview
-                messages = thread.get("messages", [])
-                preview = "New Chat"
-                if messages and len(messages) > 0:
-                    preview = messages[0].get("content", "New Chat")[:50] + "..."
-                
-                threads.append({
-                    "thread_id": thread["thread_id"],
-                    "doc_id": thread["doc_id"],
-                    "preview": preview
-                })
-        return threads
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # after streaming is done we need to append the new question and answer to the previous messages and update the database
+    async def on_complete(answer: str):
+        previous_messages.append({"role": "human", "content": question})
+        previous_messages.append({"role": "ai", "content": answer})
 
+        # here we will use update insted of upsert as the thread already exist we just need to update the messages field
+        supabase_client.table("threads").update(
+            {"messages": previous_messages}
+        ).eq("thread_id", thread_id).execute()
 
+    config = {"configurable": {"thread_id": thread_id}}
 
-
-@app.get("/")
-async def root():
-    return {"message":"QanoonAI API is running"}
-
-
-
-if __name__=="__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    return stream_graph(graph, state, config, on_complete)
 
 
 
 
 
+# filename = "Legal Case.pdf"
+# parts = filename.rsplit(".", 1)
+# print(parts)
+# ['Legal Case', 'pdf']
 
-
-# uv run uvicorn backend.app:app --reload
-
-#http://127.0.0.1:8000/docs
-# "vectorstore_uploaded": False
-
-# curl -X POST "http://127.0.0.1:8000/ask" \
-#   -F "pdf=@PAKISTAN PENAL CODE.pdf" \
-#   -F "question=What is punishment for false claim?"
-
-# curl -X POST "http://127.0.0.1:8000/follow_up" \
-#   -F "doc_id=PASTE_DOC_ID_HERE" \
-#   -F "question=Explain in simple terms"
+# multiple dots file
+# filename = "my.important.document.pdf"
+# parts = filename.rsplit(".", 1)
+# print(parts)
+# ['my.important.document', 'pdf']

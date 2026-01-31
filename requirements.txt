@@ -28,8 +28,8 @@ python-multipart   #FastAPI requires python-multipart to handle file uploads (Up
 pydantic
 uvicorn
 python-multipart
-
-
+python-jose
+aiofiles
 
 # Environment variables
 dotenv

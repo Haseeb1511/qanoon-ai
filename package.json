@@ -1,5 +1,15 @@
 {
+  "name": "qanoonai-root",
+  "private": true,
   "scripts": {
-    "frontend": "npm --prefix frontend run dev"
+    "frontend": "cd frontend && npm run dev",
+    "backend": "cd backend && uvicorn app:app --reload",
+    "dev": "npm run frontend"
+  },
+  "dependencies": {
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "vite-plugin-raw": "^1.0.3"
   }
 }

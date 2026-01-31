@@ -10,7 +10,7 @@ uv run python -m backend.app # same as above but(not recomeneded with fastAPI)
 
 # FronEnd
 ```bash
-
+npm install
 # how to run froned
 npm run frontend
 
