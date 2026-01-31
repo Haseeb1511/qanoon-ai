@@ -11,7 +11,7 @@ const ChatWindow = ({
     file
 }) => {
     const [input, setInput] = useState("");
-    const [loading, setLoading] = useState(false); // ✅ Move loading state here
+    const [loading, setLoading] = useState(false); //  Move loading state here
     const messagesEndRef = useRef(null);
     const textareaRef = useRef(null);
     const abortControllerRef = useRef(null);
@@ -87,31 +87,40 @@ const ChatWindow = ({
                 const lines = buffer.split("\n");
                 buffer = lines.pop() || '';
 
-                for (const line of lines) {
-                    const trimmedLine = line.trim();
-                    if (!trimmedLine.startsWith('data:')) continue;
+                    for (const line of lines) {
+                        const trimmedLine = line.trim();
+                        if (!trimmedLine.startsWith('data:')) continue;
 
-                    try {
-                        const data = JSON.parse(trimmedLine.replace(/^data:\s*/, ''));
-                        if (data.token) {
-                            botMessage += data.token;
-                            onUpdateMessages(prev => {
-                                const updated = [...prev];
-                                updated[botMessageIndex] = { role: 'ai', content: botMessage };
-                                return updated;
-                            });
+                        try {
+                            // Parse the JSON first
+                            const data = JSON.parse(trimmedLine.replace(/^data:\s*/, ''));
+
+                            // ✅ Check for 'done' after parsing
+                            if (data.type === 'done') {
+                                console.log("Streaming finished");
+                                setLoading(false); // stop loader
+                                break; // exit loop since streaming is complete
+                            }
+
+                            if (data.token) {
+                                botMessage += data.token;
+                                onUpdateMessages(prev => {
+                                    const updated = [...prev];
+                                    updated[botMessageIndex] = { role: 'ai', content: botMessage };
+                                    return updated;
+                                });
+                            } else if (data.type === 'error') {
+                                onUpdateMessages(prev => {
+                                    const updated = [...prev];
+                                    updated[botMessageIndex] = { role: 'ai', content: `Error: ${data.message}` };
+                                    return updated;
+                                });
+                            }
+                        } catch (err) {
+                            console.error('Failed to parse SSE:', err);
                         }
-                        else if (data.type === 'error') {
-                            onUpdateMessages(prev => {
-                                const updated = [...prev];
-                                updated[botMessageIndex] = { role: 'ai', content: `Error: ${data.message}` };
-                                return updated;
-                            });
-                        }
-                    } catch (err) {
-                        console.error('Failed to parse SSE:', err);
                     }
-                }
+
             }
 
             if (!botMessage) {
