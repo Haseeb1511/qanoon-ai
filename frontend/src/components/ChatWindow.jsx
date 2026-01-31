@@ -164,12 +164,11 @@ const ChatWindow = ({
             <div className="chat-main custom-scrollbar">
                 <div className="chat-inner">
                     {messages.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-                            <h1 className="text-3xl font-bold mb-4">How can I help you?</h1>
-                            <p className="text-secondary max-w-md mb-8">
-                                {file ? `"${file.name}" is ready. Ask me anything.` : "Upload a document to get started."}
-                            </p>
-                        </div>
+                    <div className="empty-state">
+                        <h1>How can I help you?</h1>
+                        <p>{file ? `"${file.name}" is ready. Ask me anything.` : "Upload a document to get started."}</p>
+                    </div>
+
                     ) : (
 
                         // Typing Indicator 
@@ -181,13 +180,18 @@ const ChatWindow = ({
                                     animate={{ opacity: 1, y: 0 }}
                                     className={`message-bubble ${msg.role === 'human' ? 'user' : 'ai'}`}
                                 >
-                                    {msg.content || (msg.role === 'ai' && idx === messages.length - 1 && loading && (
-                                        <div className="typing-indicator">
-                                            <span className="typing-dot"></span>
-                                            <span className="typing-dot"></span>
-                                            <span className="typing-dot"></span>
-                                        </div>
-                                    ))}
+                            {msg.content ? (
+                                <div className="message-content">
+                                    {msg.content}
+                                </div>
+                            ) : msg.role === 'ai' && idx === messages.length - 1 && loading ? (
+                                <div className="typing-indicator">
+                                    <span className="typing-dot"></span>
+                                    <span className="typing-dot"></span>
+                                    <span className="typing-dot"></span>
+                                </div>
+                    ) : null}
+
                                 </motion.div>
                             ))}
                         </div>

@@ -101,7 +101,11 @@ def stream_graph(graph, state, config, on_complete=None):
 
         try:
             async for event in graph.astream_events(state, config=config, version="v2"):
-                if event["event"] == "on_chat_model_stream":
+                # workflow.add_node("agent_response", nodes.agent_response) ==> as we have this node we check that we only stream from this node(agent)
+                if (
+                        event["event"] == "on_chat_model_stream"
+                        and event.get("metadata", {}).get("langgraph_node") == "agent_response"
+                    ):
                     chunk = event.get("data", {}).get("chunk")
                     if chunk and getattr(chunk, "content", None):
                         tokens.append(chunk.content) # we also append token in list as to persist the wole content is databse as otherwise we are genrating token by token so it will save incorrectly in database
@@ -133,6 +137,13 @@ def stream_graph(graph, state, config, on_complete=None):
         }
     )
 
+
+
+#THIS LINE HVAE ISSUE SINCE RE-RWITTEN QUERY ALSO USE LLM IT START STREAMING REWRITTEN QUERY ALONG WIH THE LLM FINAL RESPONESE
+# so we need to filter only on_chat_model_stream event for final LLM response not for re-written query
+# so we can check the event metadata or tags to differentiate between them
+# async for event in graph.astream_events(state, config=config, version="v2"):
+#     if event["event"] == "on_chat_model_stream":
 
 
 # event = {

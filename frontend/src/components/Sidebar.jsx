@@ -3,6 +3,8 @@ import { MessageSquare, Plus, FileText, Upload, X, File } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import logo from '../assets/gov_logo.png';
 
+import './Sidebar.css';
+
 const Sidebar = ({ threads, activeThreadId, onSelectThread, onNewChat, file, setFile, activeThread }) => {
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef(null);
@@ -32,13 +34,14 @@ const Sidebar = ({ threads, activeThreadId, onSelectThread, onNewChat, file, set
         }
     };
 
-    const showUploadSection = !activeThread;
+    // Always show upload section so users can upload new PDFs anytime
+    const showUploadSection = true;
 
     return (
         <div className="sidebar">
-            <div className="p-4 flex flex-col h-full">
+            <div className="sidebar-inner">
                 <div className="flex items-center gap-3 mb-6 px-2">
-                    <img src={logo} alt="QanoonAI" className="w-2 h-1 rounded-full" />
+                    <img src={logo} alt="QanoonAI" className="sidebar-logo" />
                     {/* <span className="font-bold text-lg text-white">QanoonAI</span> */}
                 </div>
 

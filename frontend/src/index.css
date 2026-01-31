@@ -1,40 +1,38 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* It contain
+Background colors
+Text colors
+Hover color
+Borders
+Chat bubble colors
+Accent color (--first-color) */
 
 :root {
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     line-height: 1.5;
     font-weight: 400;
 
-    color-scheme: dark;
+    /* Color scheme */
     --bg-primary: #0d0d0f;
-    --bg-secondary: #0d0d0f;
     --bg-sidebar: #0d0d0f;
     --bg-hover: #1f1f23;
     --bg-message-user: #2f2f35;
     --bg-message-ai: transparent;
     --text-primary: #ececec;
     --text-secondary: #b4b4b4;
-    --text-muted: #6b6b70;
-    --accent-color: #ececec;
     --border-color: #2a2a2e;
-
-    font-synthesis: none;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    --first-color: #4f46e5;
 }
 
+/* Reset */
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
 }
 
+/* Body styling */
 body {
     margin: 0;
-    display: flex;
     min-width: 320px;
     min-height: 100vh;
     background-color: var(--bg-primary);
@@ -45,13 +43,28 @@ body {
 #root {
     width: 100%;
     height: 100vh;
-    display: flex;
+    overflow: hidden;
 }
 
-/* Scrollbar */
+/* App container */
+.app-container {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+/* Button reset */
+button {
+    font-family: inherit;
+}
+
+/* Scrollbars */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -59,200 +72,120 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #2a2a2e;
-    border-radius: 10px;
+    background: var(--border-color);
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
     background: #3f3f46;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
+/* Firefox scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
 }
 
-/* Layout */
-.sidebar {
-    width: 260px;
-    min-width: 260px;
-    background-color: var(--bg-sidebar);
-    border-right: 1px solid var(--border-color);
+/* Utility classes */
+.flex {
     display: flex;
+}
+
+.flex-col {
     flex-direction: column;
 }
 
-.chat-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    background-color: var(--bg-primary);
-}
-
-.chat-main {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-}
-
-.chat-inner {
-    max-width: 800px;
-    width: 100%;
-    margin: 0 auto;
-    padding: 40px 20px;
-}
-
-/* Components */
-.new-chat-btn {
-    width: 100%;
-    display: flex;
+.items-center {
     align-items: center;
+}
+
+.gap-3 {
     gap: 12px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    color: var(--text-primary);
-    font-size: 14px;
-    font-weight: 500;
-    transition: background 0.2s;
-    cursor: pointer;
-    border: none;
-    background: transparent;
 }
 
-.new-chat-btn:hover {
-    background-color: var(--bg-hover);
-}
-
-.thread-item {
-    width: 100%;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transition: background 0.2s;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-}
-
-.thread-item:hover,
-.thread-item.active {
-    background-color: var(--bg-hover);
-    color: var(--text-primary);
-}
-
-/* Bubbles */
-.message-bubble {
-    max-width: 85%;
-    padding: 12px 16px;
-    border-radius: 20px;
-    font-size: 15px;
-    line-height: 1.6;
+.mb-6 {
     margin-bottom: 24px;
 }
 
-.message-bubble.user {
-    background-color: var(--bg-message-user);
-    color: #fff;
-    align-self: flex-end;
+.mb-4 {
+    margin-bottom: 16px;
 }
 
-.message-bubble.ai {
-    background-color: var(--bg-message-ai);
-    color: var(--text-primary);
-    align-self: flex-start;
-    padding-left: 0;
-    padding-right: 0;
-    max-width: 100%;
+.mb-3 {
+    margin-bottom: 12px;
 }
 
-/* Input Bar */
-.input-area {
-    padding: 24px 20px;
-    background: linear-gradient(0deg, var(--bg-primary) 70%, transparent 100%);
+.mb-2 {
+    margin-bottom: 8px;
 }
 
-.input-wrapper {
-    max-width: 800px;
-    margin: 0 auto;
-    background-color: var(--bg-hover);
-    border: 1px solid var(--border-color);
-    border-radius: 26px;
-    padding: 8px 14px;
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    transition: border-color 0.2s;
+.px-2 {
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
-.input-wrapper:focus-within {
-    border-color: #4d4d4f;
+.px-3 {
+    padding-left: 12px;
+    padding-right: 12px;
 }
 
-.chat-textarea {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    font-size: 15px;
-    resize: none;
-    padding: 8px 0;
-    max-height: 200px;
+.py-4 {
+    padding-top: 16px;
+    padding-bottom: 16px;
 }
 
-.chat-textarea:focus {
-    outline: none;
-}
-
-.send-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background-color: var(--text-primary);
-    color: black;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    border: none;
-    margin-bottom: 4px;
-    transition: opacity 0.2s;
-}
-
-.send-btn:disabled {
-    opacity: 0.2;
-}
-
-/* Upload */
-.upload-container {
-    padding: 16px;
-    margin-top: auto;
-    border-top: 1px solid var(--border-color);
-}
-
-.dropzone {
-    border: 1px dashed var(--border-color);
-    border-radius: 8px;
-    padding: 12px;
+.text-center {
     text-align: center;
-    cursor: pointer;
-    transition: background 0.2s;
 }
 
-.dropzone:hover {
-    background-color: var(--bg-hover);
+.text-sm {
+    font-size: 14px;
 }
 
-.file-info {
-    background-color: var(--bg-hover);
-    padding: 8px 12px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+.text-xs {
     font-size: 12px;
+}
+
+.font-semibold {
+    font-weight: 600;
+}
+
+.font-bold {
+    font-weight: 700;
+}
+
+.uppercase {
+    text-transform: uppercase;
+}
+
+.tracking-wider {
+    letter-spacing: 0.05em;
+}
+
+.truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.flex-1 {
+    flex: 1;
+    min-height: 0;
+    /* Critical for flexbox scrolling */
+}
+
+.overflow-y-auto {
+    overflow-y: auto;
+}
+
+.space-y-1>*+* {
+    margin-top: 4px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.overflow-hidden {
+    overflow: hidden;
 }

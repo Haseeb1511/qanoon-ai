@@ -1,0 +1,147 @@
+/* ---------------------------------------------
+   Sidebar Styles
+--------------------------------------------- */
+
+/* Sidebar layout */
+.sidebar {
+    width: 260px;
+    min-width: 260px;
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.sidebar-inner {
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Logo section */
+.sidebar-logo {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+
+/* New Chat button */
+.new-chat-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+}
+
+.new-chat-btn:hover {
+    background-color: var(--bg-hover);
+}
+
+/* Thread items container */
+.thread-item {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    text-align: left;
+}
+
+.thread-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.thread-item.active {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* Upload container - stays at bottom */
+.upload-container {
+    padding: 16px 0 0 0;
+    margin-top: auto;
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+/* Drag-and-drop zone */
+.dropzone {
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 20px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background-color: transparent;
+}
+
+.dropzone:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--text-secondary);
+}
+
+/* File info display */
+.file-info {
+    background-color: var(--bg-hover);
+    padding: 10px 12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.file-info button {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Custom scrollbar for threads list */
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+}
