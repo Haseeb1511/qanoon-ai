@@ -1,4 +1,4 @@
-import os, sys, uuid, json, asyncio
+import uuid, json, asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -47,12 +47,6 @@ async def lifespan(app: FastAPI):
         print("Graph + Checkpointer ready")
         yield
 
-
-# it tell fast api to use the lifespan context to handle app startup and shutdown
-# Before the first request(quesion) it will initlize hte checkpointer and graph 
-# after the app stpops it can clean up resources if needed
-# with out this our enpoint would fail because graph and chekcpointer would be None.
-# app.router.lifespan_context = lifespan
 
 
 
@@ -281,6 +275,12 @@ async def follow_up(
 
 
 
+
+
+
+
+
+
 @app.get("/all_threads")
 async def get_all_threads():
     """Get all threads with previews"""
@@ -308,34 +308,23 @@ async def get_all_threads():
         
         return threads
     except Exception as e:
-        print(f"❌ Error fetching threads: {e}")
+        print(f"Error fetching threads: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
+
+
+
 
 
 @app.get("/get_threads/{thread_id}")
 async def get_threads(thread_id: str):
     """Get a specific thread's data"""
-    try:
-        response = (
-            supabase_client
-            .table("threads")
-            .select("*")
-            .eq("thread_id", thread_id)
-            .single()
-            .execute()
-        )
-        
-        if response.data:
-            return {
-                "thread_id": response.data["thread_id"],
-                "doc_id": response.data["doc_id"],
-                "messages": response.data["messages"]
-            }
-        else:
-            raise HTTPException(status_code=404, detail="Thread not found")
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Thread not found: {str(e)}")
+    messages, doc_id = await load_thread_messages(thread_id)
+    return {
+        "thread_id": thread_id,
+        "doc_id": doc_id,
+        "messages": messages
+    }
 
 
 
