@@ -14,6 +14,7 @@ class AgentState(TypedDict):
     answer:str
     messages: Annotated[list[BaseMessage], add_messages]
     doc_id:str
+    user_id:str   # for tenant isolation
     summary:str
     vectorstore_uploaded:bool
     rewritten_query:str

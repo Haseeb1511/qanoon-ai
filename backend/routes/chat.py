@@ -19,7 +19,7 @@ async def ask_question(
     question: str = Form(...),
     user=Depends(get_current_user)
 ):
-    state, thread_id, doc_id = await prepare_initial_state(pdf, question)
+    state, thread_id, doc_id = await prepare_initial_state(pdf, question,request)
 
     # as above when streaming is done and message is append as single sting we need to store the question and answer in database
     # so we define on_complete function to do that
@@ -85,6 +85,7 @@ async def follow_up(
 
     # now we will pass the state to the graph
     state = {
+        "user_id": user.id,   # unique user id from supbase
         "doc_id": doc_id,  # which doc_id we are using
         "collection_name": collection_name,  # which vectorstore collection to use
         "messages": messages # list of all previous messages + new question(to provide context to the model)

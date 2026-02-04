@@ -46,6 +46,13 @@ app.include_router(auth.router)
 
 
 
+#Important
+#Backend inserts MUST use:
+# SUPABASE_SERVICE_ROLE_KEY
+# If you’re using:
+# SUPABASE_ANON_KEY
+# inserts will fail or silently no-op.
+
 
 # No response received. Please try again. ===>  This mean graph is None
 # NEVER IMPORT RUNTIME FORM APP.PY TO OTHER FILES AS IT WILL CREATE CIRCULAR IMPORT ISSUE
