@@ -46,8 +46,20 @@ async def ask_question(
     config = {"configurable": {"thread_id": thread_id}}
     graph = request.app.state.graph # we fetch the graph instance from app state
     
-    response = stream_graph(graph, state, config, on_complete)
+    # Pass thread_id so it gets sent to frontend in first SSE event
+    response = stream_graph(graph, state, config, on_complete, thread_id=thread_id)
     return response
+
+
+# User asks first question → /ask called
+# Backend streams: {"type": "thread_created", "thread_id": "abc123"} ← first event
+# Frontend immediately sets activeThread = { thread_id: "abc123" }
+# User asks second question → activeThread exists → /follow_up called 
+
+
+
+
+
 
 
 # ===================== Follow-up Question Endpoint =====================

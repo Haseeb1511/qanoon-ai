@@ -82,25 +82,19 @@ function ChatPage() {
     }
   };
 
-  // NEW: Callback when a new thread is created from /ask endpoint
-  const handleNewThreadCreated = async () => {
+  // Callback when a new thread is created - receives thread_id directly from SSE
+  const handleNewThreadCreated = async (threadId) => {
+    // Set as active thread immediately (no API call needed!)
+    setActiveThread({ thread_id: threadId });
+
+    // Refresh sidebar threads list in background
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-
-      // Refresh threads list
       let data = await api.getAllThreads(token);
-      if (!Array.isArray(data)) data = [];
-
-      setThreads(data);
-
-      // Set the newest thread as active (first in list, assuming sorted by created_at desc)
-      if (data.length > 0) {
-        const newestThread = data[0];
-        setActiveThread(newestThread);
-      }
+      if (Array.isArray(data)) setThreads(data);
     } catch (error) {
-      console.error("Failed to refresh threads after new chat:", error);
+      console.error("Failed to refresh threads:", error);
     }
   };
 

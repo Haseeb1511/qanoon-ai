@@ -3,10 +3,14 @@ from fastapi.responses import StreamingResponse
 
 
 # ===================== Streaming Graph =====================
-def stream_graph(graph, state, config, on_complete=None):
+def stream_graph(graph, state, config, on_complete=None, thread_id=None):
 
     async def event_generator():
         tokens = []
+
+        # Send thread_id first if this is a new thread (from /ask endpoint)
+        if thread_id:
+            yield f"data: {json.dumps({'type': 'thread_created', 'thread_id': thread_id})}\n\n"
 
         try:
             async for event in graph.astream_events(state, config=config, version="v2"):
@@ -79,3 +83,17 @@ def stream_graph(graph, state, config, on_complete=None):
 # on_chat_model_end  ===>	LLM finished
 # on_tool_start	 ===> Tool execution started
 # on_tool_end ===>	Tool execution finished
+
+
+
+
+
+
+
+
+
+
+# User asks first question → /ask called
+# Backend streams: {"type": "thread_created", "thread_id": "abc123"} ← first event
+# Frontend immediately sets activeThread = { thread_id: "abc123" }
+# User asks second question → activeThread exists → /follow_up called 

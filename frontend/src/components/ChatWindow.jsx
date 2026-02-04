@@ -115,6 +115,15 @@ const ChatWindow = ({
                             break; // exit loop since streaming is complete
                         }
 
+                        // ✅ Handle new thread creation (from /ask endpoint)
+                        if (data.type === 'thread_created' && data.thread_id) {
+                            console.log("New thread created:", data.thread_id);
+                            if (onNewThreadCreated) {
+                                onNewThreadCreated(data.thread_id);
+                            }
+                            continue; // skip to next line
+                        }
+
                         if (data.token) {
                             botMessage += data.token;
                             onUpdateMessages(prev => {
@@ -142,9 +151,6 @@ const ChatWindow = ({
                     updated[botMessageIndex] = { role: 'ai', content: "No response received. Please try again." };
                     return updated;
                 });
-            } else if (isNewThread && onNewThreadCreated) {
-                // NEW: Notify parent to refresh threads and set active thread
-                await onNewThreadCreated();
             }
         } catch (err) {
             if (err.name !== 'AbortError') {
