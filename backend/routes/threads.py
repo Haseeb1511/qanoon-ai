@@ -11,7 +11,7 @@ async def load_thread_messages(thread_id: str,user_id:str):
     response = (
         supabase_client
         .table("threads")
-        .select("messages, doc_id")
+        .select("messages, doc_id,summary")
         .eq("thread_id", thread_id)
         .eq("user_id",user_id)   # filter by login user id
         .single()
@@ -20,7 +20,7 @@ async def load_thread_messages(thread_id: str,user_id:str):
     if not response.data:
         raise HTTPException(status_code=404, detail="Thread not found")
 
-    return response.data["messages"], response.data["doc_id"]
+    return response.data["messages"], response.data["doc_id"],response.data.get("summary","")
 
 
 
@@ -65,7 +65,7 @@ async def get_all_threads(user=Depends(get_current_user)):
 @router.get("/get_threads/{thread_id}")
 async def get_threads(thread_id: str,user=Depends(get_current_user)):
     """Get a specific thread's data"""
-    messages, doc_id = await load_thread_messages(thread_id,user.id)
+    messages, doc_id,summary = await load_thread_messages(thread_id,user.id)
     return {
         "thread_id": thread_id,
         "doc_id": doc_id,

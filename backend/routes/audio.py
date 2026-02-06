@@ -74,7 +74,7 @@ async def ask_question_audio(
     start_time = time.time()
 
     # Callback to store in database after streaming completes
-    async def on_complete(answer: str):
+    async def on_complete(answer: str, final_state: dict):
         end_time = time.time()
         duration = end_time - start_time
         print(f"[Timer] /ask/audio query took {duration:.2f} seconds")
@@ -122,7 +122,7 @@ async def follow_up_audio(
 
 
     # Load previous messages for the selected thread
-    previous_messages, doc_id = await load_thread_messages(thread_id, user.id)
+    previous_messages, doc_id, summary = await load_thread_messages(thread_id, user.id)
 
     # Fetch document info to get collection name
     # api of supabase client is sync so we need to run it in threadpool to avoid blocking the event loop
@@ -156,13 +156,14 @@ async def follow_up_audio(
         "doc_id": doc_id,
         "collection_name": collection_name,
         "messages": messages,
+        "summary": summary or "",
         "vectorstore_uploaded": True
     }
 
     start_time = time.time()
 
     # Callback to update database after streaming completes
-    async def on_complete(answer: str):
+    async def on_complete(answer: str, final_state: dict):
         end_time = time.time()
         duration = end_time - start_time
         print(f"[Timer] /follow_up/audio query took {duration:.2f} seconds")

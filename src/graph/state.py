@@ -1,10 +1,11 @@
 import os
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated,Dict,Any
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
 from langgraph.graph import add_messages
 
-class AgentState(TypedDict):
+
+class AgentState(TypedDict,total=False):
     documents_path:str
     documents:list[Document]
     chunks:list[Document] 
@@ -18,3 +19,4 @@ class AgentState(TypedDict):
     summary:str
     vectorstore_uploaded:bool
     rewritten_query:str
+    token_usage: int

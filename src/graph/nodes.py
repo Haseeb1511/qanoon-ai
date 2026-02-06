@@ -6,108 +6,91 @@ from langchain_core.messages import (
 )
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-# from langchain_community.vectorstores.pgvector import PGVector
 from langchain_postgres import PGVector
 from tqdm import tqdm
-from langchain.messages import RemoveMessage # to delete something from state permenantly
+from langchain.messages import RemoveMessage
 from langchain_community.document_loaders import DirectoryLoader
 from sqlalchemy.pool import NullPool
 
 # import from other custom modules
+from src.graph import state
 from src.prompts.rag_prompt import PROMPT_TEMPLATE
-from src.db_connection.connection import CONNECTION_STRING 
+from src.db_connection.connection import CONNECTION_STRING
 from src.utils.file_hash import get_file_hash
 from src.graph.state import AgentState
-from fastapi.concurrency import run_in_threadpool
 
-# SUPBAE CLIENT IS SYNCHRONOUS SO WE USE run_in_threadpool TO AVOID BLOCKING THE MAIN THREAD
+# SUPABASE CLIENT (SYNC)
+from src.db_connection.connection import supabase_client
 
 
 class GraphNodes:
-    def __init__(self,embedding_model,llm,supbase_client):
+    def __init__(self, embedding_model, llm, supbase_client):
         self.embedding_model = embedding_model
         self.llm = llm
         self.supabase_client = supbase_client
-            
-    
-    
-    def set_doc_id(self,state:AgentState):
-        # Skip if doc_id already exists 
+
+    def set_doc_id(self, state: AgentState):
         if state.get("doc_id"):
             return state
-            
+
         path = os.path.abspath(state["documents_path"])
-        
+
         if not os.path.isfile(path):
             raise ValueError("Directoy uploaded not supported with hashing yet")
+
         state["doc_id"] = get_file_hash(path)
         return state
 
-
-    # as uspbase = network call  so we make async function to avoid blocking the main thread and also we can do other task while waiting for response from supbase
-    async def check_pdf_already_uploaded(self,state:AgentState):
-        """Checkif PDF already exist in SUpbase
-        Same PDF:    
-        - Different user
-        - Will embed again (correct behavior)
-        """
-        # first check if vectostore already exist
+    def check_pdf_already_uploaded(self, state: AgentState):
         if state.get("vectorstore_uploaded"):
             return state
-        # we check id documnet exist already or not and also check for user  if for sepcific user it exist or not (sometime one user might have already uploaded the same document )
-        
-        # as supbase client does not suppor async we use run in threadpool
-        # run_in_threadpool expects a callable (lambda), not the result of the call
-        response = await run_in_threadpool(
-            lambda: self.supabase_client.table("documents")
-                        .select("doc_id")
-                        .eq("doc_id", state["doc_id"])
-                        .eq("user_id", state["user_id"])
-                        .limit(1)
-                        .execute()
+
+        response = (
+            self.supabase_client
+            .table("documents")
+            .select("doc_id")
+            .eq("doc_id", state["doc_id"])
+            .eq("user_id", state["user_id"])
+            .limit(1)
+            .execute()
         )
+
         if response.data:
             print("Pdf already exist in supbase skipping documnet ingesion...")
             state["vectorstore_uploaded"] = True
         else:
             state["vectorstore_uploaded"] = False
-        return state  
 
+        return state
 
-
-    async def document_ingestion(self,state: AgentState):
-
+    def document_ingestion(self, state: AgentState):
         if state.get("vectorstore_uploaded"):
             print("Skipping vectoingestion - PDF already exist")
             state["vectorstore_uploaded"] = True
             return state
-        
-        path = os.path.abspath(state["documents_path"])  # ensure absolute
+
+        path = os.path.abspath(state["documents_path"])
 
         if not os.path.isfile(path):
             raise ValueError(f"Invalid documents_path: {path}")
-        
 
         loader = PyPDFLoader(path)
         documents = loader.load()
 
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200)
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks = splitter.split_documents(documents)
 
-        # langchain chunk metadata is first updated
-        # langchain chunk metadata (each chunk of document will have this metadata (it will not have page content - only metadata))
-        for i,chunk in enumerate(chunks):
-            source_path = chunk.metadata.get("source","")
+        for i, chunk in enumerate(chunks):
+            source_path = chunk.metadata.get("source", "")
             file_name = os.path.basename(source_path) if source_path else "unknow.pdf"
 
             metadata = {
-                "user_id":state["user_id"],
-                "doc_id":state["doc_id"],
-                "chunk_index":i,
-                "file_name":file_name,
-                "page":chunk.metadata.get("page")  
+                "user_id": state["user_id"],
+                "doc_id": state["doc_id"],
+                "chunk_index": i,
+                "file_name": file_name,
+                "page": chunk.metadata.get("page")
             }
-            # update langchian chunk metadata usd by pgvector
             chunk.metadata.update(metadata)
 
         vectorstore = PGVector(
@@ -115,139 +98,113 @@ class GraphNodes:
             collection_name=state["collection_name"],
             embeddings=self.embedding_model,
             use_jsonb=True,
-            engine_args={"poolclass": NullPool}  # disable pooling
+            engine_args={"poolclass": NullPool}
         )
-        batch_size=50
-        # upload embedding 
+
+        batch_size = 50
         for i in tqdm(range(0, len(chunks), batch_size), desc="Uploading chunks"):
             batch = chunks[i:i + batch_size]
-            # async 
-            await run_in_threadpool(vectorstore.add_documents, batch)
-            # vectorstore.add_documents(batch)
-        
+            vectorstore.add_documents(batch)
 
-        # Insert metadata to supbase table
-        rows = [{   
-                "user_id":state["user_id"],
-                "doc_id": state["doc_id"],
-                "chunk_index": i,
-                "file_name": chunk.metadata["file_name"],
-                "page": chunk.metadata.get("page"),
-                "content": chunk.page_content,
-        } for i,chunk in enumerate(chunks)
-        ]
+        rows = [{
+            "user_id": state["user_id"],
+            "doc_id": state["doc_id"],
+            "chunk_index": i,
+            "file_name": chunk.metadata["file_name"],
+            "page": chunk.metadata.get("page"),
+            "content": chunk.page_content,
+        } for i, chunk in enumerate(chunks)]
+
         if rows:
             try:
-                await run_in_threadpool(
-                    lambda: self.supabase_client.table("documents").insert(rows).execute()
-                )
+                self.supabase_client.table("documents").insert(rows).execute()
             except Exception:
                 print("Chunks already exist — skipping insert")
-    
+
         print(f"Uploaded {len(chunks)} chunks")
 
         state["vectorstore_uploaded"] = True
         return state
 
-
-
-
-    async def query_rewriter(self,state: AgentState):
-        """Rewrite follow-up questions to be standalone using conversation context"""
-        
+    def query_rewriter(self, state: AgentState):
         human_messages = [m for m in state.get("messages", []) if isinstance(m, HumanMessage)]
         current_query = human_messages[-1].content
-        
-        # If there's conversation history, rewrite the query
+
         if len(state.get("messages", [])) > 1:
-            
-            # Build conversation context
             memory_text = state.get("summary") or ""
             if not memory_text:
                 conversation_history = []
-                for m in state.get("messages", [])[:-1]:  # Exclude current question
+                for m in state.get("messages", [])[:-1]:
                     role = "User" if isinstance(m, HumanMessage) else "Assistant"
                     conversation_history.append(f"{role}: {m.content}")
                 memory_text = "\n".join(conversation_history)
-            
-            # Rewrite query to be standalone
+
             rewrite_prompt = f"""Given this conversation history:
-                {memory_text}
+{memory_text}
 
-                Rewrite the following question to be standalone (include necessary context from history):
-                Question: {current_query}
+Rewrite the following question to be standalone (include necessary context from history):
+Question: {current_query}
 
-                Standalone question:"""
-            
-            response = await self.llm.ainvoke([HumanMessage(content=rewrite_prompt)])
+Standalone question:"""
+
+            response = self.llm.invoke([HumanMessage(content=rewrite_prompt)])
             rewritten_query = response.content.strip()
-            
+
             print(f"Original: {current_query}")
             print(f"Rewritten: {rewritten_query}")
-            
-            # Store rewritten query for retrieval
+
             state["rewritten_query"] = rewritten_query
         else:
             state["rewritten_query"] = current_query
-        
+
         return state
 
-
-
-    # We can add Metadata filtering Here
-    # We can add Metadata filtering Here
-    def retriever(self,state: AgentState):     
+    def retriever(self, state: AgentState):
         vectorstore = PGVector(
             connection=CONNECTION_STRING,
             collection_name=state["collection_name"],
             embeddings=self.embedding_model,
             use_jsonb=True,
-            engine_args={"poolclass": NullPool}  # disable pooling
+            engine_args={"poolclass": NullPool}
         )
-        # Metadata filter for this specific PDF
+
         retriever = vectorstore.as_retriever(
             search_type="similarity",
             search_kwargs={
                 "k": 5,
-                "filter": {"doc_id": state["doc_id"],"user_id":state["user_id"] } # only search this pdf  and for this user
+                "filter": {
+                    "doc_id": state["doc_id"],
+                    "user_id": state["user_id"]
+                }
             }
         )
-        
-        # Use rewritten query instead of original
+
         query = state.get("rewritten_query", state["messages"][-1].content)
-        
         retrieved_docs = retriever.invoke(query)
 
         state["retrieved_docs"] = retrieved_docs
         return state
 
+    def context_builder(self, state: AgentState):
+        retrieved_docs = state.get("retrieved_docs", [])
 
-    # file_name is added during text splitting
-    # page exists → PyPDFLoader adds this automatically
-    def context_builder(self,state:AgentState):
-            retrieved_docs = state.get("retrieved_docs",[])
-            if not state["retrieved_docs"]:
-                state["context"] = ""
-                state["answer"] = ("I could not find relevant information in the provided document.")
-            else:
+        if not retrieved_docs:
+            state["context"] = ""
+            state["answer"] = "I could not find relevant information in the provided document."
+        else:
+            context = "\n\n".join(
+                f"[Source: {doc.metadata.get('file_name', 'Unknown')} "
+                f"- Page {doc.metadata.get('page', 'N/A')}]\n"
+                f"{doc.page_content}"
+                for doc in retrieved_docs
+            )
+            state["context"] = context
 
-                context = "\n\n".join(
-                    f"[Source: {doc.metadata.get('file_name', 'Unknown')} "
-                    f"- Page {doc.metadata.get('page', 'N/A')}]\n"    # page no
-                    f"{doc.page_content}"
-                    for doc in retrieved_docs
-                )
-                state["context"] = context
-            return state
+        return state
 
+    def summary_creation(self, state: AgentState):
+        existing_summary = state["summary"]
 
-
-    async def summary_creation(self,state:AgentState):
-        existing_summary = state["summary"] # we first load existing summary
-
-        # We have two scenrio:
-        # 1. We might already have summary
-        # 2. or We are Genrating summary fir the first time
         if existing_summary:
             prompt = (
                 f"Existing summary:\n{existing_summary}\n\n"
@@ -258,33 +215,24 @@ class GraphNodes:
 
         message_for_summary = state["messages"] + [HumanMessage(content=prompt)]
 
-        print("Callin summary LLM") # debugging
-        # generate summary
-        response = await self.llm.ainvoke(message_for_summary)
+        response = self.llm.invoke(message_for_summary)
 
-        # now delete the orignal messages that have been summarized
         message_to_delete = state["messages"][:-2] if len(state["messages"]) > 2 else []
 
         return {
-            "summary":response.content,
-            "messages":[RemoveMessage(id=m.id) for m in message_to_delete]
+            "summary": response.content,
+            "messages": [RemoveMessage(id=m.id) for m in message_to_delete]
         }
 
+    def should_summzarizer(self, state: AgentState):
+        print("summarize node triggered")
+        # Trigger summarization after 3 human turns.
+        human_count = sum(1 for m in state.get("messages", []) if isinstance(m, HumanMessage))
+        return human_count >= 3
 
-    def should_summzarizer(self,state:AgentState):
-        return len(state["messages"]) > 6
-
-
-
-    # cat node with memory
-    async def agent_response(self,state: AgentState):
-        """
-        Generates the LLM response for the current query, injecting memory (summary or previous messages)
-        and RAG context into the prompt.
-        """
+    def agent_response(self, state: AgentState):
         context = state.get("context", "")
 
-        # Get all human messages
         human_messages = [m for m in state.get("messages", []) if isinstance(m, HumanMessage)]
         if not human_messages:
             raise ValueError("No human message found in state for retrieval")
@@ -293,8 +241,6 @@ class GraphNodes:
 
         prompt_messages = []
 
-        # Memory injection 
-        # Use summary if it exists, otherwise include all previous messages
         memory_text = state.get("summary", "")
         if not memory_text:
             conversation_history = []
@@ -303,74 +249,34 @@ class GraphNodes:
                 conversation_history.append(f"{role}: {m.content}")
             memory_text = "\n".join(conversation_history) if conversation_history else "No previous conversation."
 
-        # Inject memory as system message
         prompt_messages.append(SystemMessage(content=f"Conversation Memory:\n{memory_text}"))
 
-        # RAG context + current query 
         formatted_prompt = PROMPT_TEMPLATE.format(
             context=context,
             question=query
         )
         prompt_messages.append(HumanMessage(content=formatted_prompt))
 
-        print("Calling Agent Response LLM")  # debugging
-        response = await self.llm.ainvoke(prompt_messages)
+        response = self.llm.invoke(prompt_messages)
 
-        # Save AI response in state
+        token_usage = response.response_metadata.get("token_usage", {})
+        total_tokens = token_usage.get("total_tokens", 0)
+
+        supabase_client.table("usage").insert({
+            "user_id": state["user_id"],
+            "doc_id": state["doc_id"],
+            "tokens_used": total_tokens,
+            "query": state["messages"][-1].content,
+            "answer": response.content
+        }).execute()
+
         state["messages"].append(AIMessage(content=response.content))
         state["answer"] = response.content
 
         return state
 
-
-
     def conditional(self, state: AgentState):
         if state.get("vectorstore_uploaded", False):
-            return "query_rewriter"   # already exists → query
+            return "query_rewriter"
         else:
-            return "document_ingestion"  # new → ingest
-
-
-
-# ASYNC HELP WHERN THIER ARE MULTIPLE USER SO IT DOES  NOT BLOCK THE SERVER WHICH CAUSE ISSUE FOR OTHER USER
-
-#ASYNC CONDTIONS:(library must support async if not then use sync)
-# You make a function async when it waits.
-# Not when it’s “slow”.
-# Not when it “feels important”.
-# When it waits for something outside your Python process.
-    
-# When you SHOULD use async
-# Network calls (always async)
-
-#1️⃣ Anything that:
-# Talks to the internet
-# Talks to another service
-# Calls an API
-
-# Examples (your code):
-# OpenAI (llm.invoke → llm.ainvoke)
-# Supabase queries
-# OAuth / JWT verification
-# Webhooks
-# External HTTP APIs
-
-# 🧠 Reason:
-# While waiting, Python can serve other users.
-
-
-# 2️⃣ DATABASE CALL USALLY ASYNC
-
-
-#3️⃣ Waiting on something (timeouts, retries, backoff)
-
-
-
-# ===> When you should NOT use asyn
-# CPU-bound work (keep sync)
-# PDF parsing
-# Text splitting
-# Hashing files
-# Regex
-# JSON manipulation
-# Prompt formatting
+            return "document_ingestion"

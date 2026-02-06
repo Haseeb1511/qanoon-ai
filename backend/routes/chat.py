@@ -10,7 +10,7 @@ from fastapi import APIRouter
 
 from fastapi.concurrency import run_in_threadpool
 import time
-
+import asyncio
 router = APIRouter()
 
 
@@ -28,21 +28,27 @@ async def ask_question(
 
     # as above when streaming is done and message is append as single sting we need to store the question and answer in database
     # so we define on_complete function to do that
-    async def on_complete(answer: str):
+    async def on_complete(answer: str, final_state: dict):
         end_time = time.time()  # stop timer after streaming finishes
         duration = end_time - start_time
-        print(f"[Timer] /ask query took {duration:.2f} seconds")
+        print(f"/ask query took {duration:.2f} seconds")
 
-        await run_in_threadpool(
-            lambda:supabase_client.table("threads").upsert({
-            "thread_id": thread_id,
-            "doc_id": doc_id,
-            "user_id":user.id, # add supbase user id for auth
-            "messages": [
-                {"role": "human", "content": question},
-                {"role": "ai", "content": answer}
-            ]
-        }).execute())
+        # UPDATE THREADS
+        try:
+            await run_in_threadpool(
+                lambda:supabase_client.table("threads").upsert({
+                "thread_id": thread_id,
+                "doc_id": doc_id,
+                "user_id":user.id, # add supbase user id for auth
+                "messages": [
+                    {"role": "human", "content": question},
+                    {"role": "ai", "content": answer}
+                ]
+            }).execute())
+            print("Thread upserted successfully in ask endpoint.")
+
+        except asyncio.TimeoutError:
+            print("Supbase timeout error while upserting thread data")
 
     config = {"configurable": {"thread_id": thread_id}}
     graph = request.app.state.graph # we fetch the graph instance from app state
@@ -73,7 +79,7 @@ async def follow_up(
     user=Depends(get_current_user)
 ):
     # first we will load previous message for the seelcted thread id that user had previously used
-    previous_messages, doc_id = await load_thread_messages(thread_id,user.id)
+    previous_messages, doc_id,summary = await load_thread_messages(thread_id,user.id)
 
     # then we will fetch document info to get collection name
     # as our langgraph vectorstore is used collection name to fetch relevant chunks from vectorstore
@@ -111,7 +117,8 @@ async def follow_up(
     state = {
         "user_id": user.id,   # unique user id from supbase
         "doc_id": doc_id,  # which doc_id we are using
-        "collection_name": collection_name,  # which vectorstore collection to use
+        "collection_name": collection_name,  # which vectorstore collection to use,
+        "summary": summary or " ", # previous summary of the document if exist
         "messages": messages, # list of all previous messages + new question(to provide context to the model)
         "vectorstore_uploaded": True # PDF already ingested, skip document ingestion
 
@@ -119,19 +126,36 @@ async def follow_up(
     start_time = time.time()  # start timer before streaming
 
     # after streaming is done we need to append the new question and answer to the previous messages and update the database
-    async def on_complete(answer: str):
+    async def on_complete(answer: str, final_state: dict):
         end_time = time.time()  # stop timer after streaming finishes
         duration = end_time - start_time
-        print(f"[Timer] /follow_up query took {duration:.2f} seconds")
+        print(f"/follow_up query took {duration:.2f} seconds")
 
-        previous_messages.append({"role": "human", "content": question})
-        previous_messages.append({"role": "ai", "content": answer})
+        
+        #UPDATE THREAD
 
+        # first apppend the new ai message in state["messages"]
+        state["messages"].append(AIMessage(content=answer))
+        clean_messages = [
+                {"role":"human","content":m.content}
+                if isinstance(m, HumanMessage)
+                else {"role":"ai","content":m.content}
+                for m in state["messages"]
+        ]
         # here we will use update insted of upsert as the thread already exist we just need to update the messages field
-        await run_in_threadpool(
-            lambda:supabase_client.table("threads").update(
-            {"messages": previous_messages}
-        ).eq("thread_id", thread_id).execute())
+        try:
+            
+            await run_in_threadpool(
+                lambda:supabase_client.table("threads")
+                .update({
+                "messages": clean_messages,
+                "summary": final_state.get("summary", state.get("summary", ""))
+                })
+                .eq("thread_id", thread_id).execute())
+            print("Thread updated successfully in follow_up endpoint.")
+
+        except asyncio.TimeoutError:
+            print("Supbase timeout error while updating thread data")
 
     config = {"configurable": {"thread_id": thread_id}}
 
