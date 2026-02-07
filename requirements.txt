@@ -36,4 +36,8 @@ dotenv
 ipykernel
 
 
+# audio 
+gTTs
+pydub
+
 

@@ -95,3 +95,12 @@ User Q4 → Loads summary from DB
 
 
 ```
+
+
+
+
+```powershell
+time for update token usage 
+const id = setInterval(poll, 5000);
+in app.jsx
+```

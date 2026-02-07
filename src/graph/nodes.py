@@ -25,9 +25,47 @@ from fastapi.concurrency import run_in_threadpool
 
 # SUPBAE CLIENT IS SYNCHRONOUS SO WE USE run_in_threadpool TO AVOID BLOCKING THE MAIN THREAD
 from src.db_connection.connection import supabase_client
+from langchain_community.retrievers import BM25Retriever
+# from langchain.schema import Document
+from langchain_core.documents import Document
+
 
 #for streaming token count 
 from langchain_community.callbacks import get_openai_callback
+
+
+def rrf_merge(bm25_docs, dense_docs, k=60, top_n=5):
+    """
+    Reciprocal Rank Fusion to merge BM25 and dense retrieval results.
+    Uses page_content as unique identifier since LangChain Documents don't have IDs.
+    Returns the actual Document objects, not just IDs.
+    Dense retrieval gets 2x weight since semantic matching is more accurate for legal queries.
+    """
+    scores = {}
+    doc_map = {}  # Map content hash to document for retrieval
+
+    # BM25 results with standard weight (1x)
+    for rank, doc in enumerate(bm25_docs or []):
+        # Use content hash as unique identifier
+        doc_key = hash(doc.page_content)
+        doc_map[doc_key] = doc
+        scores[doc_key] = scores.get(doc_key, 0.0) + 1 / (k + rank + 1)
+
+    # Dense results with 2x weight (semantic is more reliable for legal)
+    for rank, doc in enumerate(dense_docs or []):
+        doc_key = hash(doc.page_content)
+        doc_map[doc_key] = doc
+        scores[doc_key] = scores.get(doc_key, 0.0) + 2 * (1 / (k + rank + 1))  # 2x weight
+
+    if not scores:
+        return []
+
+    # Sort by score and return actual Document objects
+    sorted_keys = sorted(scores, key=scores.get, reverse=True)[:top_n]
+    return [doc_map[key] for key in sorted_keys]
+
+
+
 
 class GraphNodes:
     def __init__(self,embedding_model,llm,supbase_client):
@@ -201,31 +239,77 @@ class GraphNodes:
         return state
 
 
-    # We can add Metadata filtering Here
-    async def retriever(self,state: AgentState):     
+    # Hybrid Retrieval: BM25 (keyword) + Dense (semantic) using EnsembleRetriever
+    async def retriever(self, state: AgentState):
+        # 1. Load document chunks from Supabase for BM25
+        response = await run_in_threadpool(
+            lambda: self.supabase_client
+            .table("documents")
+            .select("content, chunk_index, page, file_name")
+            .eq("doc_id", state["doc_id"])
+            .eq("user_id", state["user_id"])
+            .execute()
+        )
+        
+        if not response.data:
+            state["retrieved_docs"] = []
+            return state
+        
+        # Convert to LangChain Document objects for BM25
+        bm25_docs = [
+            Document(
+                page_content=row["content"],
+                metadata={
+                    "doc_id": state["doc_id"],
+                    "user_id": state["user_id"],
+                    "chunk_index": row["chunk_index"],
+                    "page": row["page"],
+                    "file_name": row["file_name"]
+                }
+            )
+            for row in response.data
+        ]
+        
+        # BM25 Retriever key word base it search directly from documnets
+        bm25_retriever = BM25Retriever.from_documents(bm25_docs, k=3)
+        
+        # Dense Retriever semantic base it search from vector store
         vectorstore = PGVector(
             connection=CONNECTION_STRING,
             collection_name=state["collection_name"],
             embeddings=self.embedding_model,
             use_jsonb=True,
-            engine_args={"poolclass": NullPool}  # disable pooling
+            engine_args={"poolclass": NullPool}
         )
-        # Metadata filter for this specific PDF
-        retriever = vectorstore.as_retriever(
+        dense_retriever = vectorstore.as_retriever(
             search_type="similarity",
             search_kwargs={
-                "k": 5,
-                "filter": {"doc_id": state["doc_id"],"user_id":state["user_id"] } # only search this pdf  and for this user
+                "k": 4,
+                "filter": {"doc_id": state["doc_id"], "user_id": state["user_id"]}
             }
         )
         
-        # Use rewritten query instead of original
-        query = state.get("rewritten_query", state["messages"][-1].content)
+        # Use rewritten query if available (from query_rewriter node), else fall back to raw message
+        query = state.get("rewritten_query") or state["messages"][-1].content
         
-        retrieved_docs = await run_in_threadpool(
-            retriever.invoke,query
-            )
-
+        # Get results from both retrievers
+        bm25_results = await run_in_threadpool(bm25_retriever.invoke, query)
+        dense_results = await run_in_threadpool(dense_retriever.invoke, query)
+        
+        # DEBUG: Print retrieval results
+        print(f"DEBUG - Query: {query}")
+        print(f"DEBUG - BM25 results count: {len(bm25_results) if bm25_results else 0}")
+        print(f"DEBUG - Dense results count: {len(dense_results) if dense_results else 0}")
+        if bm25_results:
+            print(f"DEBUG - BM25 first doc preview: {bm25_results[0].page_content[:100]}...")
+        if dense_results:
+            print(f"DEBUG - Dense first doc preview: {dense_results[0].page_content[:100]}...")
+        
+        # Merge using RRF (Reciprocal Rank Fusion)
+        retrieved_docs = rrf_merge(bm25_results, dense_results, k=60, top_n=4)
+        
+        print(f"DEBUG - Final merged docs count: {len(retrieved_docs)}")
+        
         state["retrieved_docs"] = retrieved_docs
         return state
 
