@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Send, Loader2, Mic, PanelLeft } from "lucide-react";
 import { motion } from "framer-motion";
+import ReactMarkdown from "react-markdown";
 
 import "./ChatWindow.css";
 import { supabase } from "../../supabaseClient";
@@ -328,13 +329,21 @@ const ChatWindow = ({
             className={`message-bubble ${msg.role === "human" ? "user" : "ai"}`}
           >
             <div className="message-content">
-              {msg.content || (loading && idx === messages.length - 1 && (
-                <div className="typing-indicator">
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
-                  <span className="typing-dot" />
-                </div>
-              ))}
+              {msg.content ? (
+                msg.role === "ai" ? (
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                ) : (
+                  msg.content
+                )
+              ) : (
+                loading && idx === messages.length - 1 && (
+                  <div className="typing-indicator">
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                  </div>
+                )
+              )}
             </div>
           </motion.div>
         ))}

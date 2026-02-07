@@ -292,23 +292,14 @@ class GraphNodes:
         # Use rewritten query if available (from query_rewriter node), else fall back to raw message
         query = state.get("rewritten_query") or state["messages"][-1].content
         
-        # Get results from both retrievers
-        bm25_results = await run_in_threadpool(bm25_retriever.invoke, query)
-        dense_results = await run_in_threadpool(dense_retriever.invoke, query)
-        
-        # DEBUG: Print retrieval results
-        print(f"DEBUG - Query: {query}")
-        print(f"DEBUG - BM25 results count: {len(bm25_results) if bm25_results else 0}")
-        print(f"DEBUG - Dense results count: {len(dense_results) if dense_results else 0}")
-        if bm25_results:
-            print(f"DEBUG - BM25 first doc preview: {bm25_results[0].page_content[:100]}...")
-        if dense_results:
-            print(f"DEBUG - Dense first doc preview: {dense_results[0].page_content[:100]}...")
+        # Get results from both retrievers IN PARALLEL (faster than sequential)
+        bm25_results, dense_results = await asyncio.gather(
+            run_in_threadpool(bm25_retriever.invoke, query),
+            run_in_threadpool(dense_retriever.invoke, query)
+        )
         
         # Merge using RRF (Reciprocal Rank Fusion)
         retrieved_docs = rrf_merge(bm25_results, dense_results, k=60, top_n=4)
-        
-        print(f"DEBUG - Final merged docs count: {len(retrieved_docs)}")
         
         state["retrieved_docs"] = retrieved_docs
         return state
@@ -469,37 +460,19 @@ class GraphNodes:
 
 
 
+# Network calls (Supabase, OpenAI) → async 
+# File I/O operations → async with run_in_threadpool 
+# LLM invocations → using ainvoke 
+
 # ASYNC HELP WHERN THIER ARE MULTIPLE USER SO IT DOES  NOT BLOCK THE SERVER WHICH CAUSE ISSUE FOR OTHER USER
 
-#ASYNC CONDTIONS:(library must support async if not then use sync)
-# You make a function async when it waits.
-# Not when it’s “slow”.
-# Not when it “feels important”.
-# When it waits for something outside your Python process.
-    
-# When you SHOULD use async
-# Network calls (always async)
-
-#1️⃣ Anything that:
-# Talks to the internet
-# Talks to another service
-# Calls an API
-
-# Examples (your code):
-# OpenAI (llm.invoke → llm.ainvoke)
-# Supabase queries
-# OAuth / JWT verification
-# Webhooks
-# External HTTP APIs
-
-# 🧠 Reason:
-# While waiting, Python can serve other users.
 
 
-# 2️⃣ DATABASE CALL USALLY ASYNC
+
+# DATABASE CALL USALLY ASYNC
 
 
-#3️⃣ Waiting on something (timeouts, retries, backoff)
+#Waiting on something (timeouts, retries, backoff)
 
 
 
