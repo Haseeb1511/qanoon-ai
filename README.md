@@ -78,3 +78,20 @@ User Q4 → Loads summary from DB
         Summary extended (if messages ≥3 again)
 
 ```
+
+
+
+# How to add Rate limit in app
+
+```bash
+
+| File                                   | Change                                                   |
+|----------------------------------------|----------------------------------------------------------|
+| backend/routes/chat.py                 | Add token limit check before `/ask` and `/follow_up`     |
+| backend/routes/audio.py                | Add same check for audio endpoints                       |
+| frontend/src/components/ChatWindow.jsx | Handle `429` error and show token limit message          |
+| frontend/src/App.jsx                   | Optionally disable input when `userTotalTokens >= 100000`|
+
+
+
+```

@@ -181,6 +181,7 @@ function ChatPage() {
           const total = await fetchUserTotalTokens();
           setUserTotalTokens(total);
         }}
+        isLimitReached={userTotalTokens >= 10000}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
       />

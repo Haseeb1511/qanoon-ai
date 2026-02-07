@@ -14,6 +14,7 @@ const ChatWindow = ({
   file,
   onNewThreadCreated,    // callback when a new thread is created
   onStreamDone,          // callback after streaming completes to refresh token usage
+  isLimitReached = false, // true if user has reached token limit
   sidebarOpen = true,
   onToggleSidebar,
 }) => {
@@ -139,6 +140,17 @@ const ChatWindow = ({
         signal: abortControllerRef.current.signal
       });
 
+      // Check for 429 rate limit error
+      if (!response.ok && response.status === 429) {
+        onUpdateMessages(prev => [
+          ...prev.slice(0, -1), // Remove empty AI placeholder
+          { role: "ai", content: "⚠️ You have reached your maximum API limit (10,000 tokens). Please contact support to increase your limit." }
+        ]);
+        setLoading(false);
+        onStreamDone?.(); // Refresh token count
+        return;
+      }
+
       await handleStreamResponse(response, botMessageIndex);
     } catch (err) {
       console.error(err);
@@ -174,6 +186,16 @@ const ChatWindow = ({
         body: formData,
         signal: abortControllerRef.current.signal,
       });
+
+      if (!response.ok && response.status === 429) {
+        onUpdateMessages(prev => [
+          ...prev,
+          { role: "ai", content: "⚠️ You have reached your maximum API limit (10,000 tokens). Please contact support to increase your limit." }
+        ]);
+        setLoading(false);
+        onStreamDone?.();
+        return;
+      }
 
       if (!response.body) throw new Error("No response body");
 
@@ -325,7 +347,7 @@ const ChatWindow = ({
             className="chat-textarea"
             ref={textareaRef}
             value={input}
-            placeholder="Type your question..."
+            placeholder={isLimitReached ? "⚠️ Token limit reached (10,000)" : "Type your question..."}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -333,7 +355,7 @@ const ChatWindow = ({
                 handleSubmit();
               }
             }}
-            disabled={loading || (!activeThread && !file)}
+            disabled={loading || (!activeThread && !file) || isLimitReached}
           />
 
           <div className="actions">
@@ -353,7 +375,7 @@ const ChatWindow = ({
             <button
               className={`mic-btn ${recording ? "recording" : ""}`}
               onClick={recording ? stopRecording : startRecording}
-              disabled={loading}
+              disabled={loading || isLimitReached}
             >
               {recording ? <Waveform /> : <Mic />}
             </button>

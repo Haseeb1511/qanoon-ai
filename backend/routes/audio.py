@@ -18,6 +18,8 @@ import json
 
 router = APIRouter()
 
+from backend.services.token_limit import check_token_limit
+
 # audio files
 from src.audio.voice import text_to_speech, text_to_speech_bytes
 from src.audio.transcription import AudioToText
@@ -95,6 +97,11 @@ async def ask_question_audio(
     3. Processes the question through the RAG pipeline using stream_graph
     4. Streams the response back
     """
+
+
+    # check token limits first (raises HTTPException if limit exceeded)
+    await check_token_limit(user.id)
+
     # Transcribe audio to text first (before streaming starts)
     question = await transcribe_audio_file(audio)
     print("Transcribed audio to text:", question)
@@ -168,6 +175,11 @@ async def follow_up_audio(
     4. Processes the question through the RAG pipeline using stream_graph
     5. Streams the response back
     """
+
+
+    # check token limits first (raises HTTPException if limit exceeded)
+    await check_token_limit(user.id)
+    
     # Transcribe audio to text first
     question = await transcribe_audio_file(audio)
     print("Transcribed audio to text:", question)

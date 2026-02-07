@@ -11,8 +11,8 @@ from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 import time
 import asyncio
+from backend.services.token_limit import check_token_limit
 router = APIRouter()
-
 
 
 # ============================= Log token usage =============
@@ -42,6 +42,8 @@ async def log_token_usage(user_id:str,doc_id:str,thread_id:str,token_usage:dict)
 
 
 
+
+
 #==================== Initial Question Endpoint =====================
 from fastapi import BackgroundTasks
 
@@ -53,6 +55,11 @@ async def ask_question(
     question: str = Form(...),
     user=Depends(get_current_user)
 ):
+
+    # check token limits first (raises HTTPException if limit exceeded)
+    await check_token_limit(user.id)
+
+    # prepare initial state
     state, thread_id, doc_id = await prepare_initial_state(pdf, question,request)
     
     start_time = time.time()  # start timer before streaming
@@ -124,6 +131,11 @@ async def follow_up(
     question: str = Form(...),
     user=Depends(get_current_user)
 ):
+
+     # check token limits first (raises HTTPException if limit exceeded)
+    await check_token_limit(user.id)
+
+
     # first we will load previous message for the seelcted thread id that user had previously used
     previous_messages, doc_id,summary = await load_thread_messages(thread_id,user.id)
 

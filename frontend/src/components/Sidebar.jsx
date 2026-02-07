@@ -152,12 +152,12 @@ const Sidebar = ({
                 <div className="token-usage-container px-4 py-2 border-t border-gray-700">
                     <div className="flex justify-between text-xs text-[#ececec] mb-1">
                         <span>Used: {userTotalTokens.toLocaleString()}</span>
-                        <span>Limit: 100,000</span>
+                        <span>Limit: 10,000</span>
                     </div>
                     <div className="w-full h-2 bg-gray-600 rounded">
                         <div
                             className="h-2 bg-green-500 rounded"
-                            style={{ width: `${Math.min((userTotalTokens / 100000) * 100, 100)}%` }}
+                            style={{ width: `${Math.min((userTotalTokens / 10000) * 100, 100)}%` }}
                         />
                     </div>
                 </div>
