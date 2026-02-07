@@ -272,9 +272,6 @@ class GraphNodes:
 
         print("Callin summary LLM") # debugging
         # generate summary
-        print("Calling summary LLM")
-        print(f"DEBUG: token_usage BEFORE summary: {state.get('token_usage')}")
-         
         response = await self.llm.ainvoke(message_for_summary)
 
         # now delete the orignal messages that have been summarized

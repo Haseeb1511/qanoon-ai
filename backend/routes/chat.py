@@ -81,7 +81,8 @@ async def ask_question(
                 "messages": [
                     {"role": "human", "content": question},
                     {"role": "ai", "content": answer}
-                ]
+                ],
+                "summary": final_state.get("summary", "")  # Save summary(just for consitency as ask endpoint never create summary it only trigger when first message is sent)
             }).execute())
             print("Thread upserted successfully in ask endpoint.")
 
