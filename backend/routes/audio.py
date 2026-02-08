@@ -82,7 +82,7 @@ async def ask_question_audio(
 
 
     # Prepare initial state for our LLM
-    state, thread_id, doc_id = await prepare_initial_state(pdf, question, request)
+    state, thread_id, doc_ids = await prepare_initial_state(pdf, question, request)
 
     start_time = time.time()
 
@@ -97,7 +97,7 @@ async def ask_question_audio(
             await run_in_threadpool(
             lambda:supabase_client.table("threads").upsert({
             "thread_id": thread_id,
-            "doc_id": doc_id,
+            "doc_ids": doc_ids,  
             "user_id": user.id,
             "messages": [
                 {"role": "human", "content": question},
@@ -117,7 +117,7 @@ async def ask_question_audio(
             background_tasks.add_task(
                 log_token_usage,
                 user.id,
-                doc_id,
+                doc_ids[0] if doc_ids else "",  # Use first doc_id for logging
                 thread_id,
                 token_usage
             )
@@ -160,23 +160,13 @@ async def follow_up_audio(
 
 
     # Load previous messages for the selected thread
-    previous_messages, doc_id, summary = await load_thread_messages(thread_id, user.id)
+    previous_messages, doc_ids, summary = await load_thread_messages(thread_id, user.id)
 
-    # Fetch document info to get collection name
-    # api of supabase client is sync so we need to run it in threadpool to avoid blocking the event loop
-    response = await run_in_threadpool(
-                        lambda:supabase_client
-                      .table("documents")
-                      .select("file_name")
-                      .eq("doc_id", doc_id)
-                      .limit(1)
-                      .execute())
-   
-    
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Document not found")
+    if not doc_ids:
+        raise HTTPException(status_code=404, detail="No documents found for this thread")
 
-    collection_name = response.data[0]["file_name"].rsplit(".", 1)[0].lower().replace(" ", "_")
+    # Use user-based collection name for multi-PDF support
+    collection_name = f"user_{user.id}"
 
     # Build messages list with context
     messages = []
@@ -191,23 +181,11 @@ async def follow_up_audio(
     # Prepare state for the graph
     state = {
         "user_id": user.id,
-        "doc_id": doc_id,
+        "doc_ids": doc_ids,  # Changed to doc_ids array
         "collection_name": collection_name,
-        "messages": messages,
         "summary": summary or "",
+        "messages": messages,
         "vectorstore_uploaded": True
-    }
-
-
-    # now we will pass the state to the graph
-    state = {
-        "user_id": user.id,   # unique user id from supbase
-        "doc_id": doc_id,  # which doc_id we are using
-        "collection_name": collection_name,  # which vectorstore collection to use,
-        "summary": summary or " ", # previous summary of the document if exist
-        "messages": messages, # list of all previous messages + new question(to provide context to the model)
-        "vectorstore_uploaded": True # PDF already ingested, skip document ingestion
-
     }
 
     start_time = time.time()
@@ -244,13 +222,12 @@ async def follow_up_audio(
             print("Supbase timeout error while updating thread data")
 
         
-                # Schedule token usage logging as background task
         token_usage = final_state.get("token_usage")
         if token_usage:
             background_tasks.add_task(
                 log_token_usage,
                 user.id,
-                doc_id,
+                doc_ids[0] if doc_ids else "",  # Use first doc_id for logging
                 thread_id,
                 token_usage
             )
