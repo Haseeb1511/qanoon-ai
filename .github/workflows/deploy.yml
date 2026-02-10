@@ -1,6 +1,7 @@
 name: Deploy Backend to AWS EC2
 
 on:
+  workflow_dispatch:  # Manual trigger from GitHub Actions UI
   push:
     branches: [main]
     paths:
@@ -8,6 +9,7 @@ on:
       - 'src/**'
       - 'requirements.txt'
       - 'backend/Dockerfile.fastapi'
+      - '.github/workflows/**'
 
 jobs:
   build-and-deploy:
