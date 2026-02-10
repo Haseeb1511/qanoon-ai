@@ -1,14 +1,15 @@
 from sqlalchemy.pool import NullPool  
 import os
-from pathlib import Path  
+# from pathlib import Path  
 from dotenv import load_dotenv
+load_dotenv()
 from supabase import create_client
 # from sqlalchemy import create_engine
 
 
 # Absolute path to .env (project root)
-env_path = Path(__file__).resolve().parents[2] / ".env"
-load_dotenv(dotenv_path=env_path)
+# env_path = Path(__file__).resolve().parents[2] / ".env"
+# load_dotenv(dotenv_path=env_path)
 
 
 CONNECTION_STRING = os.environ.get("CONNECTION_STRING","")

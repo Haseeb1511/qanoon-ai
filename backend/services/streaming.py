@@ -56,7 +56,8 @@ async def stream_graph(graph, state, config, on_complete=None, thread_id=None,fi
             async for event in graph.astream_events(state, config=config, version="v2"):
                 # the node from which we want streaming
                 node = event.get("metadata", {}).get("langgraph_node")
-                
+                # event_type = event.get("event", "")
+
 
                 # Capture token_usage from agent_response node
                 if event["event"] == "on_chain_end" and node == "agent_response":

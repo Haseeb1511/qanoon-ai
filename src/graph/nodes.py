@@ -308,9 +308,10 @@ class GraphNodes:
             for row in response.data
         ]
         
-        # BM25 Retriever key word base it search directly from documnets
+
         bm25_retriever = BM25Retriever.from_documents(bm25_docs, k=3)
-        
+
+
         # Dense Retriever semantic base it search from vector store
         vectorstore = PGVector(
             connection=CONNECTION_STRING,
@@ -319,13 +320,6 @@ class GraphNodes:
             use_jsonb=True,
             engine_args={"poolclass": NullPool}
         )
-        # dense_retriever = vectorstore.as_retriever(
-        #     search_type="similarity",
-        #     search_kwargs={
-        #         "k": 4,
-        #         "filter": {"doc_id": state["doc_id"], "user_id": state["user_id"]}
-        #     }
-        # )
         dense_retriever = vectorstore.as_retriever(
             search_type="similarity",
             search_kwargs={
@@ -337,13 +331,13 @@ class GraphNodes:
         
         # Use rewritten query if available (from query_rewriter node), else fall back to raw message
         query = state.get("rewritten_query") or state["messages"][-1].content
-        
+
         # Get results from both retrievers IN PARALLEL (faster than sequential)
         bm25_results, dense_results = await asyncio.gather(
             run_in_threadpool(bm25_retriever.invoke, query),
             run_in_threadpool(dense_retriever.invoke, query)
         )
-        
+
         # Merge using RRF (Reciprocal Rank Fusion)
         retrieved_docs = rrf_merge(bm25_results, dense_results, k=60, top_n=4)
         
@@ -481,23 +475,23 @@ class GraphNodes:
     # as it is in the middile of our graph which is async we have to make it async also
     async def context_builder(self,state:AgentState):
         # we get retrived docs from the state
-            retrieved_docs = state.get("retrieved_docs",[])
-            # fall back if thier is no retrived docs
-            if not state["retrieved_docs"]:
-                state["context"] = ""
-                state["answer"] = ("I could not find relevant information in the provided document.")
-            else:
-                context = "\n\n".join(
-                    f"[Source: {doc.metadata.get('file_name', 'Unknown')} "
-                    f"- Page {doc.metadata.get('page', 'N/A')}]\n"    # page no
-                    f"{doc.page_content}"
-                    for doc in retrieved_docs
-                )
-                state["context"] = context
-            
-            # Yield control back to event loop to avoid blocking
-            await asyncio.sleep(0)
-            return state
+        retrieved_docs = state.get("retrieved_docs",[])
+        # fall back if thier is no retrived docs
+        if not state["retrieved_docs"]:
+            state["context"] = ""
+            state["answer"] = ("I could not find relevant information in the provided document.")
+        else:
+            context = "\n\n".join(
+                f"[Source: {doc.metadata.get('file_name', 'Unknown')} "
+                f"- Page {doc.metadata.get('page', 'N/A')}]\n"    # page no
+                f"{doc.page_content}"
+                for doc in retrieved_docs
+            )
+            state["context"] = context
+        
+        # Yield control back to event loop to avoid blocking
+        await asyncio.sleep(0)
+        return state
 
 
 

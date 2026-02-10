@@ -1,11 +1,19 @@
 # Currently in progress  -- Not yet completed
 
 
+![alt text](graph.png)
 
 
 
 
+# How to run this project
+```bash
+uv freeze --all > requirements.txt
 
+
+
+
+```
 #
 ```bash
 1. commit "setting and custom prompt feature working" it conitain codebase with sinlg epdf per thread
