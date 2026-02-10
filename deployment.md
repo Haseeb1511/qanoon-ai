@@ -203,5 +203,3 @@ docker run -d \
   --env-file /home/ubuntu/.env \
   <account_id>.dkr.ecr.<region>.amazonaws.com/qanoonai-backend:latest
 ```
-
-sdfaasdf

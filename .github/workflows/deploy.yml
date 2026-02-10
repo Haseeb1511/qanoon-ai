@@ -39,12 +39,11 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
       - name: Deploy container
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          # Login to ECR
-          aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
-
           # Pull latest image
-          docker pull ${{ secrets.ECR_REGISTRY }}/qanoonai-backend:latest
+          docker pull $ECR_REGISTRY/qanoonai-backend:latest
 
           # Stop and remove old container (if running)
           docker stop qanoonai-backend || true
@@ -56,7 +55,7 @@ jobs:
             -p 8000:8000 \
             --restart always \
             --env-file /home/ubuntu/.env \
-            ${{ secrets.ECR_REGISTRY }}/qanoonai-backend:latest
+            $ECR_REGISTRY/qanoonai-backend:latest
 
           # Clean up old images
           docker image prune -f
