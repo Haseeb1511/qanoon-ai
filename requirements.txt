@@ -141,8 +141,6 @@ python-dotenv==1.2.1
 python-json-logger==4.0.0
 python-multipart==0.0.21
 pytz==2025.2
-pywin32==311
-pywin32-ctypes==0.2.3
 PyYAML==6.0.3
 pyzmq==27.1.0
 redis==7.1.0
