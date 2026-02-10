@@ -19,17 +19,17 @@ They are independent pipelines, which is the correct architecture.
 
 **Trigger:** Push to `main` (only when backend files change)
 
-**Pipeline:**
+**Pipeline (Self-hosted runner on EC2 — no SSH needed):**
 ```
 Git Push (main)
   │
   └── GitHub Actions (.github/workflows/deploy.yml)
+        │  (runs directly on EC2 via self-hosted runner)
         ├── Build Docker image (backend/Dockerfile.fastapi)
         ├── Push to Amazon ECR (qanoonai-backend:latest)
-        └── SSH into EC2
-              ├── Pull latest image from ECR
-              ├── Stop old container
-              └── Start new container on port 8000
+        ├── Pull latest image from ECR
+        ├── Stop old container
+        └── Start new container on port 8000
 ```
 
 ---
@@ -69,11 +69,21 @@ Add secrets to GitHub	N/A	GitHub Settings
 - **Key Pair:** Create `.pem` key and save it
 - **Security Group inbound rules:**
 
-| Type       | Port | Source      |
-|------------|------|-------------|
-| SSH        | 22   | Your IP     |
-| Custom TCP | 8000 | 0.0.0.0/0   |
-| source      |   | 0.0.0.0/0   |
+| Type       | Port | Source      | Purpose                              |
+|------------|------|-------------|--------------------------------------|
+| SSH        | 22   | 0.0.0.0/0  | GitHub Actions runners (dynamic IPs) |
+| Custom TCP | 8000 | 0.0.0.0/0  | Backend API access                   |
+
+> **Why 0.0.0.0/0 for SSH?** GitHub Actions runners use different IPs on every run, so we can't whitelist a fixed IP. The `.pem` key pair protects access. For extra security, disable password-based SSH on EC2 (it's disabled by default on Ubuntu AMIs).
+
+#### How to update the Security Group in AWS Console:
+1. Go to **EC2 → Instances** → select your instance
+2. Click the **Security** tab → click the **Security Group link**
+3. Click **Edit inbound rules**
+4. Set the **SSH (port 22)** rule source to **`0.0.0.0/0`** (select "Anywhere-IPv4")
+5. Ensure **Custom TCP (port 8000)** source is **`0.0.0.0/0`**
+6. Click **Save rules**
+7. Go back to GitHub → **Actions** tab → re-run the failed workflow
 
 ### 4. EC2 Instance Setup (SSH in)
 Go to EC2 → Instances → select your instance → click **Connect**
@@ -88,6 +98,29 @@ sudo usermod -aG docker ubuntu
 
 # Apply docker group instantly (no need to logout/login)
 newgrp docker
+```
+
+### 4.5 Self-Hosted GitHub Actions Runner (on EC2)
+This lets GitHub Actions run directly on EC2 — no SSH needed.
+go to 
+setting ==> action ==> runner ==> new self hosted runner ==> linux ==> run the given command in EC2 terminal
+
+```bash
+# --- Install the runner ---
+mkdir ~/actions-runner && cd ~/actions-runner
+curl -o actions-runner-linux-x64-2.331.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.331.0/actions-runner-linux-x64-2.331.0.tar.gz
+tar xzf ./actions-runner-linux-x64-2.331.0.tar.gz
+
+# --- Configure (get your token from GitHub → Repo → Settings → Actions → Runners → New self-hosted runner) ---
+./config.sh --url https://github.com/YOUR_USERNAME/YOUR_REPO --token YOUR_TOKEN
+# Press Enter for all prompts to accept defaults
+
+# --- Install as background service (survives SSH disconnect & reboots) ---
+sudo ./svc.sh install
+sudo ./svc.sh start
+
+# Verify it's running
+sudo ./svc.sh status
 
 
 
@@ -136,6 +169,14 @@ Go to **GitHub Repo → Settings → Secrets → Actions** and add:
 | `ECR_REGISTRY`           | `<account_id>.dkr.ecr.<region>.amazonaws.com`             |
 
 ---
+
+# How to verify on github
+1. Check Deployment Status (GitHub)
+Go to your GitHub Actions tab.
+
+* click on the latest run "Fix requirements and trigger deploy"
+* If it's Green ✅, your backend is live on EC2!
+* If it's Red ❌, click it → click build-and-deploy → see the error.
 
 ## Manual Deploy (first time or emergency)
 

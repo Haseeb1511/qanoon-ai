@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -36,30 +36,25 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f backend/Dockerfile.fastapi .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            # Login to ECR
-            aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+      - name: Deploy container
+        run: |
+          # Login to ECR
+          aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
-            # Pull latest image
-            docker pull ${{ secrets.ECR_REGISTRY }}/qanoonai-backend:latest
+          # Pull latest image
+          docker pull ${{ secrets.ECR_REGISTRY }}/qanoonai-backend:latest
 
-            # Stop and remove old container (if running)
-            docker stop qanoonai-backend || true
-            docker rm qanoonai-backend || true
+          # Stop and remove old container (if running)
+          docker stop qanoonai-backend || true
+          docker rm qanoonai-backend || true
 
-            # Run new container with env file
-            docker run -d \
-              --name qanoonai-backend \
-              -p 8000:8000 \
-              --restart always \
-              --env-file /home/ubuntu/.env \
-              ${{ secrets.ECR_REGISTRY }}/qanoonai-backend:latest
+          # Run new container with env file
+          docker run -d \
+            --name qanoonai-backend \
+            -p 8000:8000 \
+            --restart always \
+            --env-file /home/ubuntu/.env \
+            ${{ secrets.ECR_REGISTRY }}/qanoonai-backend:latest
 
-            # Clean up old images
-            docker image prune -f
+          # Clean up old images
+          docker image prune -f
