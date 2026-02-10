@@ -8,9 +8,9 @@
 
 # How to run this project
 ```bash
-uv freeze --all > requirements.txt
-
-
+pip install uv
+uv init
+uv add -r requirements.txt
 
 
 ```
