@@ -14,8 +14,14 @@ WORKDIR /app
 # pydub require these two ==> ffmpeg (this installs both ffmpeg and ffprobe).
 
 # pydub require these two ==> ffmpeg (this installs both ffmpeg and ffprobe).
+# pydub require these two ==> ffmpeg (this installs both ffmpeg and ffprobe).
 RUN apt-get update \
-    && apt-get install -y ffmpeg \
+    && apt-get install -y \
+    ffmpeg \
+    build-essential \
+    python3-dev \
+    libpq-dev \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 
