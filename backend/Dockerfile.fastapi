@@ -13,8 +13,6 @@ WORKDIR /app
 # aslo cryptography require rust
 # pydub require these two ==> ffmpeg (this installs both ffmpeg and ffprobe).
 
-# pydub require these two ==> ffmpeg (this installs both ffmpeg and ffprobe).
-# pydub require these two ==> ffmpeg (this installs both ffmpeg and ffprobe).
 RUN apt-get update \
     && apt-get install -y \
     ffmpeg \
@@ -22,6 +20,9 @@ RUN apt-get update \
     python3-dev \
     libpq-dev \
     libffi-dev \
+    libcairo2-dev \
+    libpango1.0-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 
