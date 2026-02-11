@@ -31,3 +31,12 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Invalid token or expired session")
 
     return user.user
+
+
+
+
+
+# for development only we can create our own JWT secret
+# Generate a random 32-byte secret
+# python -c "import secrets; print(secrets.token_hex(32))"
+# JWT_SECRET=08abce0923df771cdba4ed200e3e5524f4e6428dff67f10e517ae8d1e8734b72

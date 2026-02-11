@@ -26,6 +26,20 @@ Git Push (main)
 - Create user: `qanoon-ai`
 - Attach policy: `AmazonEC2ContainerRegistryFullAccess`
 - Create **Access Key** (Third-party service) → save Key ID & Secret
+- For cloud Front:
+- CloudFrontFullAccess (this allow full access not recomended for production) or we can use the below custom one
+```bash
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
+    }
+  ]
+}
+```
 
  you do NOT need to log in as the IAM user. Here's how it works:
 
