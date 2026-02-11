@@ -7,9 +7,9 @@ import axios from "axios";
 // -------------------------
 // 1️⃣ Base URL of the API
 // -------------------------
-// This URL is set in your .env file (VITE_API_URL)
-// Example: VITE_API_URL=http://localhost:8000
-const API_BASE_URL = import.meta.env.VITE_API_URL;
+// This URL is set in your .env file (VITE_BACKEND_URL)
+// Example: VITE_BACKEND_URL=http://localhost:8000
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
 
 // -------------------------
 // 2️⃣ Create an Axios instance
