@@ -166,6 +166,8 @@ class GraphNodes:
         if not doc_id:
             raise ValueError("No doc_id found in state")
 
+        print(f"Starting background ingestion for doc_id: {doc_id}")
+
         loader = PyPDFLoader(path)
         documents = loader.load()
 

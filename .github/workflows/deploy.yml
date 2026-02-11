@@ -1,66 +1,66 @@
-# name: Deploy Backend to AWS EC2
+name: Deploy Backend to AWS EC2
 
-# on:
-#   workflow_dispatch:  # Manual trigger from GitHub Actions UI
-#   push:
-#     branches: [main]
-#     paths:
-#       - 'backend/**'
-#       - 'src/**'
-#       - 'requirements.txt'
-#       - 'backend/Dockerfile.fastapi'
-#       - '.github/workflows/**'
+on:
+  workflow_dispatch:  # Manual trigger from GitHub Actions UI
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'src/**'
+      - 'requirements.txt'
+      - 'backend/Dockerfile.fastapi'
+      - '.github/workflows/**'
 
-# jobs:
-#   build-and-deploy:
-#     runs-on: self-hosted
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
 
-#     steps:
-#       - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-#       - name: Configure AWS credentials
-#         uses: aws-actions/configure-aws-credentials@v2
-#         with:
-#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
 
-#       - name: Login to Amazon ECR
-#         id: login-ecr
-#         uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-#       - name: Build and push backend image
-#         env:
-#           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-#           ECR_REPOSITORY: qanoonai-backend
-#           IMAGE_TAG: latest
-#         run: |
-#           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f backend/Dockerfile.fastapi .
-#           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      - name: Build and push backend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: qanoonai-backend
+          IMAGE_TAG: latest
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f backend/Dockerfile.fastapi .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-#       - name: Deploy container
-#         env:
-#           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-#         run: |
-#           # Pull latest image
-#           docker pull $ECR_REGISTRY/qanoonai-backend:latest
+      - name: Deploy container
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          # Pull latest image
+          docker pull $ECR_REGISTRY/qanoonai-backend:latest
 
-#           # Stop and remove old container (if running)
-#           docker stop qanoonai-backend || true
-#           docker rm qanoonai-backend || true
+          # Stop and remove old container (if running)
+          docker stop qanoonai-backend || true
+          docker rm qanoonai-backend || true
 
-#           # Run new container with env file
-#           docker run -d \
-#             --name qanoonai-backend \
-#             -p 8000:8000 \
-#             --restart always \
-#             --env-file /home/ubuntu/.env \
-#             $ECR_REGISTRY/qanoonai-backend:latest
+          # Run new container with env file
+          docker run -d \
+            --name qanoonai-backend \
+            -p 8000:8000 \
+            --restart always \
+            --env-file /home/ubuntu/.env \
+            $ECR_REGISTRY/qanoonai-backend:latest
 
-#           # Clean up old images
-#           docker image prune -f
+          # Clean up old images
+          docker image prune -f
 
-#       - name: Invalidate CloudFront Cache
-#         run: |
-#           aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+      - name: Invalidate CloudFront Cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
 

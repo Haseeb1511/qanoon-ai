@@ -230,6 +230,7 @@ UPLOAD_DIR = Path("uploaded_docs")
 @router.post("/add_pdf")
 async def add_pdf_to_thread(
     request: Request,
+    background_tasks: BackgroundTasks,
     pdf: UploadFile = File(...),
     thread_id: str = Form(...),
     user=Depends(get_current_user)
@@ -240,7 +241,7 @@ async def add_pdf_to_thread(
     1. Save the PDF file
     2. Generate doc_id
     3. Add doc_id to thread's doc_ids array
-    4. Trigger document ingestion
+    4. Trigger document ingestion (Background Task)
     """
     # Save PDF
     pdf_path = UPLOAD_DIR / pdf.filename
@@ -249,7 +250,8 @@ async def add_pdf_to_thread(
             await f.write(chunk)
     
     # Generate doc_id with user-based collection
-    new_doc_id = get_file_hash(str(pdf_path))
+    # Run hashing in threadpool to avoid blocking event loop
+    new_doc_id = await run_in_threadpool(get_file_hash, str(pdf_path))
     collection_name = f"user_{user.id}"  # User-based collection for multi-PDF
     
     # Get existing thread to retrieve current doc_ids
@@ -293,17 +295,25 @@ async def add_pdf_to_thread(
         "vectorstore_uploaded": False
     }
     
-    # Import nodes from builder (the GraphNodes instance)
+    # Import nodes from builder
     from src.graph.builder import nodes
     
     # Check if already uploaded and ingest if needed
     state = await nodes.check_pdf_already_uploaded(state)
+    
+    processing_status = "completed"
+    message = f"PDF '{pdf.filename}' added to thread"
+    
     if not state.get("vectorstore_uploaded"):
-        state = await nodes.document_ingestion(state)
+        # Move heavy ingestion to background task to avoid timeout
+        background_tasks.add_task(nodes.document_ingestion, state)
+        processing_status = "processing_started"
+        message = f"PDF '{pdf.filename}' uploaded. Processing in background..."
     
     return {
         "status": "success",
-        "message": f"PDF '{pdf.filename}' added to thread",
+        "processing_status": processing_status,
+        "message": message,
         "doc_id": new_doc_id,
         "doc_ids": updated_doc_ids
     }
