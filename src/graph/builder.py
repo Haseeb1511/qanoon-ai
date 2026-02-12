@@ -85,3 +85,20 @@ class GraphBuilder:
 
     def __call__(self):
         return self.build_graph()
+
+
+
+
+# For langsmith Studio 
+# Default export for LangGraph Studio
+from langgraph.checkpoint.memory import MemorySaver
+graph = GraphBuilder(checkpointer=MemorySaver()).build_graph()
+
+
+# or using cli
+# pip install langgraph-cli
+# pip install -U "langgraph-cli[inmem]"
+# langgraph dev
+# python -m pip install -e .   # it install our project folder as a package (module)
+# LangGraph API already manages persistence automatically.
+# So it does NOT allow custom checkpointer.

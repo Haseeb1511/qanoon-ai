@@ -1,0 +1,9 @@
+{
+    "graphs": {
+        "qanoon_agent": "./src/graph/builder.py:graph"
+    },
+    "env": ".env",
+    "dependencies": [
+        "."
+    ]
+}
